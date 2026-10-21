@@ -1,0 +1,217 @@
+// ცხრილებს ქმნის scripts/setup-db.ts (npm run db:setup).
+// ამ ფაილში ცვლილებისას განაახლეთ ის სკრიპტიც.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Role {
+  id    Int    @id @default(autoincrement())
+  code  String @unique @db.VarChar(30)
+  name  String @db.VarChar(50)
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  firstName    String   @map("first_name") @db.VarChar(100)
+  lastName     String   @map("last_name") @db.VarChar(100)
+  roleId       Int      @map("role_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  role         Role     @relation(fields: [roleId], references: [id])
+
+  patientsCreated   Patient[]         @relation("PatientCreatedBy")
+  patientsUpdated   Patient[]         @relation("PatientUpdatedBy")
+  documentsUploaded PatientDocument[]
+  doctorVisits      Visit[]           @relation("VisitDoctor")
+  visitsCreated     Visit[]           @relation("VisitCreatedBy")
+  visitsUpdated     Visit[]           @relation("VisitUpdatedBy")
+  visitsCancelled   Visit[]           @relation("VisitCancelledBy")
+  paymentsTaken     VisitPayment[]
+
+  @@index([roleId])
+  @@map("users")
+}
+
+enum Gender {
+  male
+  female
+}
+
+enum MaritalStatus {
+  married
+  single
+  divorced
+  widowed
+}
+
+enum DocumentType {
+  id_card
+  passport
+  insurance
+  other
+}
+
+model Patient {
+  id            Int            @id @default(autoincrement())
+  personalId    String         @unique(map: "uq_patients_personal_id") @map("personal_id") @db.Char(11)
+  firstName     String         @map("first_name") @db.VarChar(100)
+  lastName      String         @map("last_name") @db.VarChar(100)
+  fatherName    String?        @map("father_name") @db.VarChar(100)
+  firstNameEn   String         @map("first_name_en") @db.VarChar(100)
+  lastNameEn    String         @map("last_name_en") @db.VarChar(100)
+  birthDate     DateTime       @map("birth_date") @db.Date
+  gender        Gender
+  maritalStatus MaritalStatus? @map("marital_status")
+  phone         String?        @db.VarChar(30)
+  email         String?        @db.VarChar(255)
+  country       String?        @db.VarChar(100)
+  city          String?        @db.VarChar(100)
+  actualAddress String?        @map("actual_address") @db.VarChar(255)
+  legalAddress  String?        @map("legal_address") @db.VarChar(255)
+  workplace     String?        @db.VarChar(255)
+  position      String?        @db.VarChar(255)
+  education     String?        @db.VarChar(255)
+  comment       String?        @db.Text
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  createdById   Int?           @map("created_by")
+  updatedById   Int?           @map("updated_by")
+  createdBy     User?          @relation("PatientCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?          @relation("PatientUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  documents     PatientDocument[]
+  visits        Visit[]
+
+  @@index([lastName, firstName], map: "idx_patients_name")
+  @@index([firstName], map: "idx_patients_first_name")
+  @@index([lastNameEn, firstNameEn], map: "idx_patients_name_en")
+  @@index([firstNameEn], map: "idx_patients_first_name_en")
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("patients")
+}
+
+/// კლინიკის სერვისები (ფასი ლარში). code — ICD-10 კოდი: არასავალდებულო (null — არ არის), არ არის უნიკალური.
+model Service {
+  id        Int      @id @default(autoincrement())
+  code      String?  @db.VarChar(30)
+  name      String   @unique(map: "uq_services_name") @db.VarChar(255)
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  visitServices VisitService[]
+
+  @@index([code], map: "idx_services_code")
+  @@map("services")
+}
+
+/// პაციენტის მიღება (ვიზიტი): ექიმი, დრო, თანხა. ექიმის სახელი და სერვისები ინახება იმ მომენტის მდგომარეობით.
+model Visit {
+  id          Int            @id @default(autoincrement())
+  patientId   Int            @map("patient_id")
+  doctorId    Int?           @map("doctor_id")
+  doctorName  String         @map("doctor_name") @db.VarChar(201)
+  visitAt     DateTime       @map("visit_at") @db.DateTime(0)
+  visitType   VisitType      @default(outpatient) @map("visit_type")
+  totalAmount Decimal        @map("total_amount") @db.Decimal(10, 2)
+  paidAmount  Decimal        @map("paid_amount") @db.Decimal(10, 2)
+  comment       String?        @db.Text
+  status        VisitStatus    @default(active)
+  cancelReason  String?        @map("cancel_reason") @db.VarChar(500)
+  cancelledById Int?           @map("cancelled_by")
+  cancelledAt   DateTime?      @map("cancelled_at") @db.DateTime(0)
+  createdById   Int?           @map("created_by")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedById   Int?           @map("updated_by")
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  patient       Patient        @relation(fields: [patientId], references: [id])
+  doctor        User?          @relation("VisitDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
+  createdBy     User?          @relation("VisitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?          @relation("VisitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cancelledBy   User?          @relation("VisitCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  services      VisitService[]
+  payments      VisitPayment[]
+
+  @@index([patientId, visitAt], map: "idx_visits_patient")
+  @@index([doctorId, visitAt], map: "idx_visits_doctor")
+  @@index([createdById])
+  @@map("visits")
+}
+
+enum VisitStatus {
+  active
+  cancelled
+}
+
+/// მიღების ტიპი: ამბულატორიული ან დღის სტაციონარი
+enum VisitType {
+  outpatient
+  day_hospital
+}
+
+/// გადახდის ფორმა: ნაღდი ან უნაღდო
+enum PaymentMethod {
+  cash
+  cashless
+}
+
+/// ვიზიტზე შემოტანილი თანხა (პირველადი ან მოგვიანებით). Visit.paidAmount = ჯამი.
+model VisitPayment {
+  id          Int           @id @default(autoincrement())
+  visitId     Int           @map("visit_id")
+  amount      Decimal       @db.Decimal(10, 2)
+  method      PaymentMethod @default(cash)
+  createdById Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  visit       Visit    @relation(fields: [visitId], references: [id])
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([visitId])
+  @@index([createdById])
+  @@map("visit_payments")
+}
+
+/// ვიზიტის სერვისი: დასახელება და ფასი ინახება მიღების მომენტისთვის (სერვისის შეცვლა/წაშლა ისტორიას არ ცვლის).
+model VisitService {
+  id          Int      @id @default(autoincrement())
+  visitId     Int      @map("visit_id")
+  serviceId   Int?     @map("service_id")
+  serviceCode String?  @map("service_code") @db.VarChar(30)
+  serviceName String   @map("service_name") @db.VarChar(255)
+  price       Decimal  @db.Decimal(10, 2)
+  visit       Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  service     Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([visitId])
+  @@index([serviceId])
+  @@map("visit_services")
+}
+
+model PatientDocument {
+  id           Int          @id @default(autoincrement())
+  patientId    Int          @map("patient_id")
+  docType      DocumentType @map("doc_type")
+  title        String       @db.VarChar(255)
+  originalName String       @map("original_name") @db.VarChar(255)
+  storagePath  String       @map("storage_path") @db.VarChar(255)
+  mimeType     String       @map("mime_type") @db.VarChar(100)
+  sizeBytes    Int          @map("size_bytes")
+  uploadedById Int?         @map("uploaded_by")
+  uploadedAt   DateTime     @default(now()) @map("uploaded_at") @db.Timestamp(0)
+  patient      Patient      @relation(fields: [patientId], references: [id])
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([uploadedById])
+  @@map("patient_documents")
+}
