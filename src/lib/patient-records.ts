@@ -129,7 +129,8 @@ function numberCondition(q: string): PatientSearchResult | Prisma.PatientWhereIn
  * uq_patients_personal_id, idx_patients_phone_digits, idx_patients_name (last_name, first_name), idx_patients_first_name
  * და ლათინური ანალოგები.
  */
-export async function searchPatients(query: string, { byPhone = false } = {}): Promise<PatientSearchResult> {
+/** page — გვერდი (1-დან), SEARCH_LIMIT ჩანაწერი გვერდზე (დიდი სია — მხოლოდ გვერდებად). */
+export async function searchPatients(query: string, { byPhone = false, page = 1 } = {}): Promise<PatientSearchResult> {
   const q = query.trim().replace(/\s+/g, " ");
   if (!q) return { status: "empty" };
 
@@ -174,6 +175,7 @@ export async function searchPatients(query: string, { byPhone = false } = {}): P
     where,
     select: { id: true, personalId: true, firstName: true, lastName: true, phone: true, birthDate: true },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+    skip: (Math.max(1, page) - 1) * SEARCH_LIMIT,
     take: SEARCH_LIMIT + 1,
   });
 

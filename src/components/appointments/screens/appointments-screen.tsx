@@ -86,6 +86,7 @@ export async function AppointmentsScreen({ routes, params }: { routes: Appointme
               <TableRow key={r.id} className={cn(r.status === "cancelled" && "text-muted-foreground")}>
                 <TableCell className="font-medium tabular-nums">
                   {r.start}–{r.end}
+                  {r.source === "walk_in" && <span className="block text-[10px] font-normal text-muted-foreground">ცოცხალი რიგი</span>}
                 </TableCell>
                 <TableCell>
                   <p className="font-medium">{r.patient.name}</p>

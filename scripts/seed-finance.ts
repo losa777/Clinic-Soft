@@ -36,6 +36,13 @@ const SERVICES: [category: string, name: string, price: string][] = [
   ["პროცედურა", "ნაკერების მოხსნა", "20"],
 ];
 
+/** კატეგორია → ექიმის დანიშნულების ტიპი (კონსულტაცია არ ინიშნება). */
+const ORDER_TYPES: Record<string, "lab" | "instrumental" | "procedure"> = {
+  ლაბორატორია: "lab",
+  დიაგნოსტიკა: "instrumental",
+  პროცედურა: "procedure",
+};
+
 /** seed-appointments-ის ექიმები → კონსულტაციის სერვისი. */
 const CONSULTATIONS: Record<string, string> = {
   doctor: "თერაპევტის კონსულტაცია",
@@ -71,7 +78,10 @@ async function main() {
   // სერვისები და კატეგორიები (არსებულ სერვისს ფასს არ ვუცვლით)
   const categories = new Map<string, number>();
   for (const name of new Set(SERVICES.map(([c]) => c))) {
-    const c = await prisma.serviceCategory.upsert({ where: { name }, create: { name }, update: {} });
+    const orderType = ORDER_TYPES[name] ?? null;
+    const c = await prisma.serviceCategory.upsert({ where: { name }, create: { name, orderType }, update: {} });
+    // დანიშნულების ტიპი — თუ ჯერ არ აქვს (ადმინის მიერ შეცვლილს არ ვეხებით)
+    if (orderType && !c.orderType) await prisma.serviceCategory.update({ where: { id: c.id }, data: { orderType } });
     categories.set(name, c.id);
   }
   for (const [category, name, price] of SERVICES) {

@@ -2,11 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, FileText, HandCoins, type LucideIcon } from "lucide-react";
+import { BarChart3, CalendarDays, CalendarPlus, FileText, FlaskConical, HandCoins, type LucideIcon, Syringe, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** ხატულები სახელით — სერვერული layout-იდან კომპონენტი (ფუნქცია) კლიენტს ვერ გადაეცემა. */
-const ICONS = { reports: BarChart3, invoices: FileText, debts: HandCoins } satisfies Record<string, LucideIcon>;
+const ICONS = {
+  reports: BarChart3,
+  invoices: FileText,
+  debts: HandCoins,
+  schedule: CalendarDays,
+  booking: CalendarPlus,
+  patients: Users,
+  lab: FlaskConical,
+  procedures: Syringe,
+} satisfies Record<string, LucideIcon>;
 
 export type RoleNavLink = { href: string; label: string; icon: keyof typeof ICONS };
 

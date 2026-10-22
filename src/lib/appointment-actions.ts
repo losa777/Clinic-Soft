@@ -23,17 +23,17 @@ import {
   appointmentStatusLabel,
 } from "@/lib/appointment-schema";
 import { addDays, formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
-import { requireAnyRole } from "@/lib/dal";
+import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { type PatientSearchResult, searchPatients } from "@/lib/patient-records";
 import { can } from "@/lib/permissions";
-import { APPOINTMENT_ROLES } from "@/lib/roles";
 import { type NewPatientPolicyInput, newPatientPolicySchema } from "@/modules/finance/schema";
 import { FinanceError } from "@/modules/finance/server/errors";
 import { createPatientPolicy } from "@/modules/finance/server/insurance";
 
 /**
- * ჯავშნების Server Actions. ყველა მოქმედება სერვერზე ამოწმებს როლს (APPOINTMENT_ROLES) და input-ს (zod);
+ * ჯავშნების Server Actions. ყველა მოქმედება სერვერზე ამოწმებს უფლებას (appointments.book — დაჯავშნა,
+ * appointments.manage — გადატანა/სტატუსი/გაუქმება) და input-ს (zod);
  * ბაზასთან მუშაობა Prisma-თი ან პარამეტრიზებული $queryRaw-ით ხდება (SQL injection-ისგან დაცულია).
  */
 
@@ -55,7 +55,7 @@ function checkBookingDate(date: string): string | null {
 
 /** პაციენტის ძებნა პირადი ნომრით, გვარით/სახელით ან ტელეფონით (მაქს. 20 შედეგი). */
 export async function searchAppointmentPatients(query: string): Promise<PatientSearchResult> {
-  await requireAnyRole(...APPOINTMENT_ROLES);
+  await requirePermission("appointments.book");
   if (typeof query !== "string") return { status: "invalid", error: "ძებნის ტექსტი არასწორია" };
   return searchPatients(query.slice(0, 100), { byPhone: true });
 }
@@ -68,7 +68,7 @@ export async function registerAppointmentPatient(
   values: BookingPatientValues,
   policy: NewPatientPolicyInput | null = null,
 ): Promise<PatientRegisterResult> {
-  const me = await requireAnyRole(...APPOINTMENT_ROLES);
+  const me = await requirePermission("appointments.book");
   const parsed = bookingPatientSchema.safeParse(values);
   if (!parsed.success) return invalid(parsed.error);
   const parsedPolicy = policy === null ? null : newPatientPolicySchema.safeParse(policy);
@@ -106,7 +106,7 @@ export async function registerAppointmentPatient(
 
 /** ექიმის თავისუფალი სლოტები არჩეულ დღეს (დაკავებული და გასული — გათიშულად). */
 export async function getDoctorSlots(query: SlotsQuery): Promise<SlotsResult> {
-  await requireAnyRole(...APPOINTMENT_ROLES);
+  await requirePermission("appointments.book");
   const parsed = slotsQuerySchema.safeParse(query);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
@@ -155,6 +155,7 @@ async function checkSlot(
       where: {
         patientId,
         status: { not: "cancelled" },
+        source: "booking",
         startTime: { lt: end },
         endTime: { gt: start },
         ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
@@ -185,7 +186,7 @@ async function runBooking<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): 
 
 /** ჯავშნის შექმნა. */
 export async function createAppointment(input: AppointmentInput): Promise<BookingSaveResult> {
-  const me = await requireAnyRole(...APPOINTMENT_ROLES);
+  const me = await requirePermission("appointments.book");
   const parsed = appointmentSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { patientId, doctorId, comment } = parsed.data;
@@ -207,7 +208,7 @@ export async function createAppointment(input: AppointmentInput): Promise<Bookin
 
 /** ჯავშნის გადატანა სხვა დროზე (იმავე ექიმთან). მხოლოდ „დაჯავშნილი“ სტატუსის ჯავშანი. */
 export async function rescheduleAppointment(input: RescheduleInput): Promise<ActionResult> {
-  const me = await requireAnyRole(...APPOINTMENT_ROLES);
+  const me = await requirePermission("appointments.manage");
   const parsed = rescheduleSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const start = new Date(parsed.data.start);
@@ -237,7 +238,7 @@ export async function rescheduleAppointment(input: RescheduleInput): Promise<Act
 
 /** სტატუსის შეცვლა (მობრძანდა / დასრულებული / არ გამოცხადდა / დაჯავშნილი) — დასაშვები გადასვლებით. */
 export async function changeAppointmentStatus(input: StatusChangeInput): Promise<ActionResult> {
-  const me = await requireAnyRole(...APPOINTMENT_ROLES);
+  const me = await requirePermission("appointments.manage");
   const parsed = statusChangeSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { appointmentId, status } = parsed.data;
@@ -260,7 +261,8 @@ export async function changeAppointmentStatus(input: StatusChangeInput): Promise
   // ოპტიმისტური შემოწმება: სხვამ ამასობაში თუ შეცვალა, ჩვენი ცვლილება არ ჩაიწერება
   const { count } = await prisma.appointment.updateMany({
     where: { id: appointmentId, status: appointment.status },
-    data: { status, updatedById: Number(me.id) },
+    // მოსვლის დრო — ექიმის მომლოდინეთა რიგისთვის
+    data: { status, updatedById: Number(me.id), arrivedAt: status === "arrived" ? new Date() : null },
   });
   if (count === 0) return failure("ჯავშანი ამასობაში შეიცვალა — განაახლეთ გვერდი");
   return success(`სტატუსი: ${appointmentStatusLabel(status)}`);
@@ -268,7 +270,7 @@ export async function changeAppointmentStatus(input: StatusChangeInput): Promise
 
 /** ჯავშნის გაუქმება მიზეზით. ჩანაწერი რჩება, სლოტი თავისუფლდება. დასრულებული ვიზიტი არ უქმდება. */
 export async function cancelAppointment(input: AppointmentCancelInput): Promise<ActionResult> {
-  const me = await requireAnyRole(...APPOINTMENT_ROLES);
+  const me = await requirePermission("appointments.manage");
   const parsed = appointmentCancelSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
 

@@ -47,7 +47,8 @@ export type InvoiceFormData = {
   patient: { id: number; name: string; personalId: string; debt: string };
   appointment: { id: number; label: string } | null;
   doctor: { id: number; name: string } | null;
-  doctors: { id: number; name: string }[];
+  /** queue — ექიმს პროფილი აქვს: ჯავშნის გარეშე ინვოისით პაციენტი მის რიგში ჩადგება */
+  doctors: { id: number; name: string; queue: boolean }[];
   services: BillableService[];
   /** ავტომატურად დამატებული სერვისები (მაგ. ექიმის კონსულტაცია ჯავშნიდან) */
   initialServiceIds: number[];

@@ -428,7 +428,16 @@ async function createEmrTables() {
     ["id_card", "passport", "insurance", "other", "lab_result", "imaging", "medical"],
     "NOT NULL",
   );
+  // ცოცხალი რიგი: ინვოისი ექიმით, ჯავშნის გარეშე → ჯავშანი source = 'walk_in' (სლოტს არ იკავებს);
+  // arrived_at — მოსვლის დრო, ექიმის „მომლოდინეთა“ რიგისთვის
+  await ensureColumn("appointments", "source", "ENUM('booking', 'walk_in') NOT NULL DEFAULT 'booking' AFTER status");
+  await ensureColumn("appointments", "arrived_at", "DATETIME NULL AFTER source");
   await ensureColumn("patients", "blood_group", "VARCHAR(3) NULL AFTER phone");
+  // დანიშნულების ტიპი კატეგორიაზე (ლაბორატორია / ინსტრუმენტული / ექთნის პროცედურა); არსებულს — სახელით, ერთხელ
+  await ensureColumn("service_categories", "order_type", "ENUM('lab', 'instrumental', 'procedure') NULL AFTER name");
+  for (const [name, type] of [["ლაბორატორია", "lab"], ["დიაგნოსტიკა", "instrumental"], ["პროცედურა", "procedure"]]) {
+    await prisma.$executeRaw`UPDATE service_categories SET order_type = ${type} WHERE name = ${name} AND order_type IS NULL`;
+  }
   await ensureConstraint(
     "patients",
     "chk_patients_blood_group",
@@ -610,6 +619,10 @@ async function createEmrTables() {
       CONSTRAINT fk_medical_orders_performed_by FOREIGN KEY (performed_by) REFERENCES users (id) ON DELETE SET NULL
     ) ${TABLE_OPTIONS}
   `);
+  // ვიზიტის დასრულებისას დარიცხული ინვოისი (ერთი დანიშნულება — ერთხელ)
+  await ensureColumn("medical_orders", "invoice_id", "INT NULL AFTER updated_at");
+  await ensureIndex("medical_orders", "idx_medical_orders_invoice_id", "invoice_id");
+  await ensureConstraint("medical_orders", "fk_medical_orders_invoice", "FOREIGN KEY (invoice_id) REFERENCES invoices (id)");
   // ვერსიები: previous_id UNIQUE — ერთ ვერსიას ერთი მომდევნო; ხელმოწერილი PDF — patient_documents-ში, sha256-ით
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS medical_documents (

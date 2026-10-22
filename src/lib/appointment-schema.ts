@@ -153,6 +153,8 @@ export type AppointmentRow = {
   createdBy: string | null;
   /** გასულია (გადატანა/„მობრძანდა“ ჯერ კიდევ შეიძლება — მაგ. დაგვიანებით მოსულზე) */
   isPast: boolean;
+  /** walk_in — ცოცხალი რიგი (ინვოისიდან, ჯავშნის გარეშე) */
+  source: "booking" | "walk_in";
   /** ჯავშნის (გაუქმებელი) ინვოისი */
   invoice: { id: number; number: string } | null;
 };

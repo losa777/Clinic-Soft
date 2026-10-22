@@ -15,7 +15,9 @@ import { Switch } from "@/components/ui/switch";
 import type { ActionResult } from "@/lib/action-result";
 import { formatGel } from "@/lib/money";
 import { type AppColumnDef, tableFeatureSet } from "@/lib/table";
+import { cn } from "@/lib/utils";
 import { saveCategoryAction, saveServiceAction, setServiceActiveAction } from "@/modules/finance/actions/service-actions";
+import { ORDER_TYPES } from "@/modules/finance/schema";
 import { NativeSelectClient } from "../native-select";
 
 export type ServiceRow = {
@@ -30,7 +32,9 @@ export type ServiceRow = {
   history: { oldPrice: string; newPrice: string; by: string | null; at: string }[];
 };
 
-export type CategoryRow = { id: number; name: string; services: number };
+export type CategoryRow = { id: number; name: string; orderType: OrderTypeValue | null; services: number };
+type OrderTypeValue = (typeof ORDER_TYPES)[number]["value"];
+const ORDER_TYPE_OPTIONS = [{ value: "", label: "არ ინიშნება" }, ...ORDER_TYPES];
 
 const ALL = "all";
 
@@ -320,10 +324,11 @@ function ServiceForm({ service, categories, onDone }: { service: ServiceRow | nu
 
 function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
   const [name, setName] = useState("");
+  const [orderType, setOrderType] = useState("");
   const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
   const { setResult, pending, startTransition, errors, formError } = useResult();
 
-  function save(input: { id?: number; name: string }, onSuccess: () => void) {
+  function save(input: { id?: number; name: string; orderType: OrderTypeValue | null }, onSuccess: () => void) {
     startTransition(async () => {
       const res = await saveCategoryAction(input);
       setResult(res);
@@ -338,7 +343,9 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
     <div className="flex flex-col gap-4">
       <DialogHeader>
         <DialogTitle>სერვისების კატეგორიები</DialogTitle>
-        <DialogDescription>დაზღვევის პირობა შეიძლება მთელ კატეგორიაზე მიეთითოს.</DialogDescription>
+        <DialogDescription>
+          დაზღვევის პირობა შეიძლება მთელ კატეგორიაზე მიეთითოს. „დანიშნულება“ — რომელი სიიდან ნიშნავს ექიმი ამ კატეგორიის სერვისებს.
+        </DialogDescription>
       </DialogHeader>
       {formError && (
         <Alert variant="destructive">
@@ -353,7 +360,7 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
                 className="flex flex-1 gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  save(renaming, () => setRenaming(null));
+                  save({ ...renaming, orderType: c.orderType }, () => setRenaming(null));
                 }}
               >
                 <Input value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} className="h-8" autoFocus />
@@ -364,6 +371,13 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
             ) : (
               <>
                 <span className="flex-1">{c.name}</span>
+                <NativeSelectClient
+                  id={`category-order-${c.id}`}
+                  value={c.orderType ?? ""}
+                  onChange={(v) => save({ id: c.id, name: c.name, orderType: (v || null) as OrderTypeValue | null }, () => undefined)}
+                  options={ORDER_TYPE_OPTIONS}
+                  className="h-8 w-44 text-xs"
+                />
                 <span className="text-xs text-muted-foreground">{c.services} სერვისი</span>
                 <Button variant="ghost" size="icon-sm" onClick={() => setRenaming({ id: c.id, name: c.name })} aria-label="გადარქმევა">
                   <Pencil />
@@ -377,7 +391,10 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
         className="flex items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          save({ name }, () => setName(""));
+          save({ name, orderType: (orderType || null) as OrderTypeValue | null }, () => {
+            setName("");
+            setOrderType("");
+          });
         }}
         noValidate
       >
@@ -386,6 +403,7 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
             <Input id="category-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="მაგ. ლაბორატორია" className="h-9" />
           </FormField>
         </div>
+        <NativeSelectClient id="category-order-new" value={orderType} onChange={setOrderType} options={ORDER_TYPE_OPTIONS} className={cn("h-9 w-44", errors.name && "mb-5")} />
         <Button type="submit" disabled={pending} className={errors.name ? "mb-5" : undefined}>
           <Plus />
           დამატება

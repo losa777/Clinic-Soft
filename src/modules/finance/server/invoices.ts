@@ -1,12 +1,12 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
-import { formatDate, formatTime, tbilisiParts } from "@/lib/appointment-slots";
+import { formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
 import { calcLine, fromTetri, invoiceDebt, invoiceStatus, type LineAmounts, netPaid, sumLines, toTetri } from "@/modules/finance/calc";
 import type { z } from "zod";
 import type { invoiceSchema } from "@/modules/finance/schema";
 import type { InvoiceDetail, InvoiceFormData, InvoiceListRow, InvoiceStatus, PaymentMethod } from "@/modules/finance/types";
-import { currentYear, type Db, dec, formatDateTime, fullName, int, periodRange, tetri } from "./db";
+import { currentYear, type Db, dayRange, dec, formatDateTime, fullName, int, periodRange, tetri } from "./db";
 import { FinanceError } from "./errors";
 import { nextNumber } from "./numbering";
 import { patientDebts } from "./debts";
@@ -58,7 +58,7 @@ export async function loadInvoiceFormData({
     loadActivePolicy(prisma, pid),
     prisma.user.findMany({
       where: { isActive: true, role: { code: "doctor" } },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, doctorProfile: { select: { id: true } } },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     }),
     patientDebts(prisma, [pid]),
@@ -71,7 +71,7 @@ export async function loadInvoiceFormData({
     patient: { id: patient.id, name: fullName(patient)!, personalId: patient.personalId, debt: fromTetri(debts.get(pid) ?? 0) },
     appointment: appointment ? { id: appointment.id, label: appointmentLabel(appointment) } : null,
     doctor: appointment ? { id: appointment.doctor.user.id, name: fullName(appointment.doctor.user)! } : null,
-    doctors: doctors.map((d) => ({ id: d.id, name: fullName(d)! })),
+    doctors: doctors.map((d) => ({ id: d.id, name: fullName(d)!, queue: d.doctorProfile !== null })),
     services,
     initialServiceIds: consultation && services.some((s) => s.id === consultation) ? [consultation] : [],
     policy,
@@ -84,13 +84,20 @@ export async function loadInvoiceFormData({
 /**
  * ინვოისის შექმნა ტრანზაქციაში: ფასები — ბაზის მიმდინარე (აქტიური სერვისები), დაზღვევა — პაციენტის აქტიური პოლისით
  * (თუ ხელით არ გამორთეს). ხაზებში ყველაფერი ამ მომენტის მნიშვნელობით იწერება — ფასის შემდგომი ცვლილება ინვოისს არ ცვლის.
+ * options.queueWalkIn = false — ექიმით, ჯავშნის გარეშე ინვოისი რიგს არ ქმნის (მაგ. ვიზიტის დასრულებისას დამატებითი ინვოისი).
  */
-export async function createInvoice(tx: Db, input: ParsedInvoice, userId: number): Promise<{ id: number; number: string }> {
+export async function createInvoice(
+  tx: Db,
+  input: ParsedInvoice,
+  userId: number,
+  options: { queueWalkIn?: boolean } = {},
+): Promise<{ id: number; number: string }> {
   const patient = await tx.patient.findUnique({ where: { id: input.patientId }, select: { id: true } });
   if (!patient) throw new FinanceError("პაციენტი ვერ მოიძებნა");
 
   let doctorId = input.doctorId;
   let doctorName: string | null = null;
+  let appointmentId = input.appointmentId;
   if (input.appointmentId) {
     // ჯავშნის ჩაკეტვა: ერთდროულად ორი ინვოისი ერთ ჯავშანზე არ შეიქმნება
     const locked = await tx.$queryRaw<{ id: number }[]>`SELECT id FROM appointments WHERE id = ${input.appointmentId} FOR UPDATE`;
@@ -110,10 +117,18 @@ export async function createInvoice(tx: Db, input: ParsedInvoice, userId: number
     // ჯავშნის ექიმი (შეიძლება უკვე გათიშული იყოს — სახელი მაინც იწერება)
     doctorId = appointment.doctor.user.id;
     doctorName = fullName(appointment.doctor.user);
+    // ინვოისი ნიშნავს, რომ პაციენტი მოვიდა — ექიმის მომლოდინეთა რიგში ჩადგება
+    if (appointment.status === "booked") {
+      await tx.appointment.update({
+        where: { id: input.appointmentId },
+        data: { status: "arrived", arrivedAt: new Date(), updatedById: userId },
+      });
+    }
   } else if (doctorId) {
     const doctor = await tx.user.findFirst({ where: { id: doctorId, isActive: true, role: { code: "doctor" } } });
     if (!doctor) throw new FinanceError("ექიმი ვერ მოიძებნა ან გათიშულია", { doctorId: "ექიმი ვერ მოიძებნა" });
     doctorName = fullName(doctor);
+    if (options.queueWalkIn !== false) appointmentId = await queueWalkIn(tx, input.patientId, doctorId, userId);
   }
 
   const ids = input.items.map((i) => i.serviceId);
@@ -144,7 +159,7 @@ export async function createInvoice(tx: Db, input: ParsedInvoice, userId: number
     data: {
       invoiceNumber: number,
       patientId: input.patientId,
-      appointmentId: input.appointmentId,
+      appointmentId,
       doctorId,
       doctorName,
       serviceDate: new Date(input.serviceDate),
@@ -180,6 +195,43 @@ export async function createInvoice(tx: Db, input: ParsedInvoice, userId: number
     select: { id: true },
   });
   return { id: invoice.id, number };
+}
+
+/** დღევანდელი თბილისის დღის საზღვრები. */
+const currentDayRange = () => dayRange(tbilisiToday());
+
+/**
+ * ცოცხალი რიგი: ინვოისი ექიმით, ჯავშნის გარეშე → ექიმის რიგში „მობრძანდა“ (source = walk_in, სლოტს არ იკავებს).
+ * პაციენტი ამ ექიმთან დღეს უკვე თუ ელოდება/მიღებაზეა — იგივე ჩანაწერი (მეორე რიგი არ იქმნება).
+ * ექიმს პროფილი (doctors) თუ არ აქვს, რიგი არ იქმნება (null) — ინვოისი ჩვეულებრივად.
+ */
+async function queueWalkIn(tx: Db, patientId: number, doctorUserId: number, userId: number): Promise<number | null> {
+  const profile = await tx.doctor.findUnique({ where: { userId: doctorUserId }, select: { id: true, visitDuration: true } });
+  if (!profile) return null;
+  // ექიმის ჩაკეტვა: ერთდროულად ორი ინვოისი ერთ პაციენტზე ორ რიგს არ შექმნის
+  await tx.$queryRaw`SELECT id FROM doctors WHERE id = ${profile.id} FOR UPDATE`;
+  const now = new Date();
+  const today = currentDayRange();
+  const waiting = await tx.appointment.findFirst({
+    where: { patientId, doctorId: profile.id, status: { in: ["arrived", "in_progress"] }, startTime: { gte: today.from, lt: today.to } },
+    select: { id: true },
+  });
+  if (waiting) return waiting.id;
+  const appointment = await tx.appointment.create({
+    data: {
+      patientId,
+      doctorId: profile.id,
+      startTime: now,
+      endTime: new Date(now.getTime() + profile.visitDuration * 60_000),
+      status: "arrived",
+      source: "walk_in",
+      arrivedAt: now,
+      comment: "ცოცხალი რიგი (ინვოისიდან)",
+      createdById: userId,
+    },
+    select: { id: true },
+  });
+  return appointment.id;
 }
 
 /** ინვოისის ჩაკეტვა ტრანზაქციის ბოლომდე და მისი თანხები/გადახდები (გადახდისა და გაუქმებისთვის). */

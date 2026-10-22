@@ -28,11 +28,6 @@ export const PATIENT_REGISTRAR_ROLE: SystemRoleCode = "registrar";
 /** არსებული პაციენტის მონაცემების შეცვლა და დოკუმენტის წაშლა. */
 export const PATIENT_EDITOR_ROLE: SystemRoleCode = "admin";
 
-/**
- * ექიმთან ვიზიტის დაჯავშნა: ჯავშნის შექმნა/შეცვლა/გაუქმება, ჯავშნისას ახალი პაციენტის რეგისტრაცია.
- * ახალი როლისთვის (მაგ. ქოლ ცენტრი) დაამატეთ ის SYSTEM_ROLES-ში და აქ, შემდეგ გვერდები — იხ. src/lib/appointment-routes.ts.
- */
-export const APPOINTMENT_ROLES: SystemRoleCode[] = ["registrar", "admin"];
 
 /** როლის კოდი URL-ის პირველი სეგმენტია: ლათინური პატარა ასოები, ციფრები, ტირე. */
 export const ROLE_CODE_PATTERN = /^[a-z][a-z0-9-]{1,29}$/;

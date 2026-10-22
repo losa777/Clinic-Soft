@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { readDocument } from "@/lib/document-storage";
+import { can } from "@/lib/permissions";
 import { PATIENT_ROLES } from "@/lib/roles";
 
 /**
@@ -10,7 +11,10 @@ import { PATIENT_ROLES } from "@/lib/roles";
 export async function GET(request: Request, ctx: RouteContext<"/api/patient-documents/[id]">) {
   const session = await auth();
   if (!session?.user) return new Response("ავტორიზაცია საჭიროა", { status: 401 });
-  if (!(PATIENT_ROLES as string[]).includes(session.user.roleCode)) return new Response("წვდომა აკრძალულია", { status: 403 });
+  // რეგისტრატურა/ადმინი, ექიმი (სამედიცინო ჩანაწერი) და ლაბორანტი (კვლევის შედეგი)
+  const allowed =
+    (PATIENT_ROLES as string[]).includes(session.user.roleCode) || can(session.user, "emr.view") || can(session.user, "orders.lab");
+  if (!allowed) return new Response("წვდომა აკრძალულია", { status: 403 });
 
   const id = Number((await ctx.params).id);
   const doc = Number.isInteger(id) ? await prisma.patientDocument.findUnique({ where: { id } }) : null;

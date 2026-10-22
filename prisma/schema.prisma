@@ -173,9 +173,11 @@ model Patient {
 }
 
 /// სერვისების კატეგორია (კონსულტაცია, ლაბორატორია, დიაგნოსტიკა...).
+/// orderType — ექიმის დანიშნულების ტიპი ამ კატეგორიის სერვისებზე (null — არ ინიშნება: მაგ. კონსულტაცია).
 model ServiceCategory {
   id        Int                 @id @default(autoincrement())
   name      String              @unique(map: "uq_service_categories_name") @db.VarChar(100)
+  orderType OrderType?          @map("order_type")
   services  Service[]
   contracts InsuranceContract[]
 
@@ -302,7 +304,14 @@ enum AppointmentStatus {
   no_show
 }
 
+/// booking — წინასწარი ჯავშანი (სლოტით); walk_in — ცოცხალი რიგი: ინვოისი ექიმით, ჯავშნის გარეშე (სლოტს არ იკავებს)
+enum AppointmentSource {
+  booking
+  walk_in
+}
+
 /// ექიმთან ვიზიტის ჯავშანი. დრო ინახება UTC-ში (DATETIME), ჩვენება — Asia/Tbilisi.
+/// arrivedAt — პაციენტის მოსვლის დრო („მობრძანდა“): ექიმის რიგი ამით ლაგდება.
 model Appointment {
   id            Int               @id @default(autoincrement())
   patientId     Int               @map("patient_id")
@@ -310,6 +319,8 @@ model Appointment {
   startTime     DateTime          @map("start_time") @db.DateTime(0)
   endTime       DateTime          @map("end_time") @db.DateTime(0)
   status        AppointmentStatus @default(booked)
+  source        AppointmentSource @default(booking)
+  arrivedAt     DateTime?         @map("arrived_at") @db.DateTime(0)
   comment       String?           @db.VarChar(1000)
   cancelReason  String?           @map("cancel_reason") @db.VarChar(500)
   cancelledById Int?              @map("cancelled_by")
@@ -447,6 +458,7 @@ model Invoice {
   cancelledBy             User?             @relation("InvoiceCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   items                   InvoiceItem[]
   payments                Payment[]
+  medicalOrders           MedicalOrder[]
 
   @@index([patientId], map: "idx_invoices_patient")
   @@index([createdAt], map: "idx_invoices_created_at")
@@ -788,7 +800,10 @@ model MedicalOrder {
   performedById    Int?             @map("performed_by")
   performedAt      DateTime?        @map("performed_at") @db.DateTime(0)
   updatedAt        DateTime         @map("updated_at") @db.DateTime(0)
+  /// ინვოისი, რომელშიც ეს დანიშნულება ჩაჯდა (ვიზიტის დასრულებისას) — ორჯერ არ დაერიცხება
+  invoiceId        Int?             @map("invoice_id")
   encounter        Encounter        @relation(fields: [encounterId], references: [id])
+  invoice          Invoice?         @relation(fields: [invoiceId], references: [id])
   patient          Patient          @relation(fields: [patientId], references: [id])
   service          Service          @relation(fields: [serviceId], references: [id])
   resultDocument   PatientDocument? @relation(fields: [resultDocumentId], references: [id])
@@ -802,6 +817,7 @@ model MedicalOrder {
   @@index([resultDocumentId])
   @@index([createdById])
   @@index([performedById])
+  @@index([invoiceId])
   @@map("medical_orders")
 }
 

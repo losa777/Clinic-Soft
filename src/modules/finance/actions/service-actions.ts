@@ -62,13 +62,13 @@ export async function saveCategoryAction(input: CategoryInput): Promise<ActionRe
   await requirePermission("services.manage");
   const parsed = categorySchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { id, name } = parsed.data;
+  const { id, name, orderType } = parsed.data;
   try {
     if (id) {
-      const { count } = await prisma.serviceCategory.updateMany({ where: { id }, data: { name } });
+      const { count } = await prisma.serviceCategory.updateMany({ where: { id }, data: { name, orderType } });
       if (!count) return failure("კატეგორია ვერ მოიძებნა");
     } else {
-      await prisma.serviceCategory.create({ data: { name } });
+      await prisma.serviceCategory.create({ data: { name, orderType } });
     }
   } catch (error) {
     if (isUniqueViolation(error)) return failure("კატეგორია უკვე არსებობს", { name: "ეს კატეგორია უკვე არსებობს" });

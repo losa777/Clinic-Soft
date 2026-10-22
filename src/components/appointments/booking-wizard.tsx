@@ -35,6 +35,7 @@ export function BookingWizard({
   today,
   routes,
   insuranceCompanies,
+  initial,
 }: {
   specialties: SpecialtyOption[];
   doctors: BookingDoctor[];
@@ -43,13 +44,16 @@ export function BookingWizard({
   routes: AppointmentRoutes;
   /** ახალი პაციენტის რეგისტრაციისას პოლისის დასამატებლად (უფლების გარეშე — undefined) */
   insuranceCompanies?: { id: number; name: string }[];
+  /** წინასწარ შევსებული მნიშვნელობები (მაგ. ექიმის მიმართვა / განმეორებითი ვიზიტი) */
+  initial?: { patient?: BookingPatient; doctorId?: number; date?: string; comment?: string };
 }) {
-  const [patient, setPatient] = useState<BookingPatient | null>(null);
-  const [specialtyId, setSpecialtyId] = useState<number | null>(null);
-  const [doctorId, setDoctorId] = useState<number | null>(null);
-  const [date, setDate] = useState(today);
+  const initialDoctor = doctors.find((d) => d.id === initial?.doctorId);
+  const [patient, setPatient] = useState<BookingPatient | null>(initial?.patient ?? null);
+  const [specialtyId, setSpecialtyId] = useState<number | null>(initialDoctor?.specialtyId ?? null);
+  const [doctorId, setDoctorId] = useState<number | null>(initialDoctor?.id ?? null);
+  const [date, setDate] = useState(initial?.date && initial.date > today ? initial.date : today);
   const [slot, setSlot] = useState<Slot | null>(null);
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(initial?.comment ?? "");
   const [reloadKey, setReloadKey] = useState(0);
   const [booked, setBooked] = useState<Booked | null>(null);
   const [error, setError] = useState<string>();

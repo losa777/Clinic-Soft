@@ -63,6 +63,14 @@ export function InvoiceForm({ data, routes }: { data: InvoiceFormData; routes: F
   const [saving, startSaving] = useTransition();
 
   const services = useMemo(() => new Map(data.services.map((s) => [s.id, s])), [data.services]);
+  // ჯავშნის გარეშე ექიმით — პაციენტი ექიმის მომლოდინეთა რიგში ჩადგება
+  const doctorHint = data.appointment
+    ? undefined
+    : !doctor
+      ? "არასავალდებულო; არჩევისას პაციენტი ექიმის რიგში ჩადგება"
+      : data.doctors.find((d) => d.id === doctor.id)?.queue
+        ? "პაციენტი ექიმის მომლოდინეთა რიგში ჩადგება („მობრძანდა“)"
+        : "ექიმს განრიგი არ აქვს — რიგში ვერ ჩადგება";
   const insured = data.policy !== null && !disableInsurance;
 
   const computed = lines.map((l) => {
@@ -155,7 +163,7 @@ export function InvoiceForm({ data, routes }: { data: InvoiceFormData; routes: F
             <FormField id="invoice-visit-type" label="მიღების ტიპი">
               <SegmentedChoice id="invoice-visit-type" items={VISIT_TYPES} value={visitType} onChange={setVisitType} />
             </FormField>
-            <FormField id="invoice-doctor" label="ექიმი" error={errors.doctorId} hint={data.appointment ? undefined : "არასავალდებულო"}>
+            <FormField id="invoice-doctor" label="ექიმი" error={errors.doctorId} hint={doctorHint}>
               {doctor ? (
                 <div className="flex h-10 items-center gap-2 rounded-lg border px-3">
                   <Stethoscope className="size-4 text-primary" />

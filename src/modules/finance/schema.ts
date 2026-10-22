@@ -186,8 +186,16 @@ export const serviceSchema = z.object({
 });
 export type ServiceInput = z.input<typeof serviceSchema>;
 
+/** ექიმის დანიშნულების ტიპი კატეგორიაზე (null — ამ კატეგორიის სერვისები არ ინიშნება, მაგ. კონსულტაცია). */
+export const ORDER_TYPES = [
+  { value: "lab", label: "ლაბორატორიული კვლევა" },
+  { value: "instrumental", label: "ინსტრუმენტული კვლევა" },
+  { value: "procedure", label: "ექთნის პროცედურა" },
+] as const;
+
 export const categorySchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().trim().min(2, "შეიყვანეთ კატეგორიის დასახელება").max(100, "მაქსიმუმ 100 სიმბოლო"),
+  orderType: z.enum(["lab", "instrumental", "procedure"]).nullable(),
 });
 export type CategoryInput = z.input<typeof categorySchema>;

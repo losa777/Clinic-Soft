@@ -13,7 +13,12 @@ function createClient() {
     // უმოქმედო კავშირი 5 წუთში იხურება, სანამ ქსელი/firewall ჩუმად გაწყვეტს
     idleTimeout: 300,
   });
-  return new PrismaClient({ adapter });
+  return new PrismaClient({
+    adapter,
+    // maxWait — ტრანზაქციის კავშირის მოლოდინი pool-იდან: ნაგულისხმევი 2 წამი ქსელურ ბაზაზე მცირეა, როცა
+    // გვერდი პარალელურ მოთხოვნებს აგზავნის (P2028 "Unable to start a transaction in the given time")
+    transactionOptions: { maxWait: 10_000, timeout: 10_000 },
+  });
 }
 
 // dev რეჟიმში hot reload-ისას ახალი pool-ები რომ არ შეიქმნას

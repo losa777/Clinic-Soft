@@ -204,8 +204,14 @@ export async function deletePatientDocument(id: number): Promise<ActionResult> {
   const me = await requireAnyRole(...PATIENT_ROLES);
   if (me.roleCode !== PATIENT_EDITOR_ROLE) return failure("დოკუმენტს შლის მხოლოდ ადმინისტრატორი");
 
-  const doc = await prisma.patientDocument.findUnique({ where: { id } });
+  const doc = await prisma.patientDocument.findUnique({
+    where: { id },
+    include: { _count: { select: { medicalDocuments: true, orderResults: true } } },
+  });
   if (!doc) return failure("დოკუმენტი ვერ მოიძებნა");
+  // ხელმოწერილი სამედიცინო დოკუმენტის PDF და კვლევის შედეგი სამედიცინო ჩანაწერის ნაწილია — არ იშლება
+  if (doc._count.medicalDocuments > 0) return failure("ხელმოწერილი სამედიცინო დოკუმენტი არ იშლება — შექმენით ახალი ვერსია");
+  if (doc._count.orderResults > 0) return failure("კვლევის შედეგის ფაილი არ იშლება");
   await prisma.patientDocument.delete({ where: { id } });
   await removeDocuments([doc.storagePath]);
   return success("დოკუმენტი წაიშალა");

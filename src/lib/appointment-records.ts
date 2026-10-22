@@ -12,7 +12,7 @@ import { invoicesOfAppointments } from "@/modules/finance/server/invoices";
 
 /**
  * ჯავშნების წაკითხვა სერვერზე (გვერდებისა და Server Actions-ისთვის).
- * აქ როლი არ მოწმდება — გამომძახებელი ამოწმებს (requireRole / requireAnyRole).
+ * აქ როლი არ მოწმდება — გამომძახებელი ამოწმებს (requireRole / requirePermission).
  */
 
 /** prisma ან ტრანზაქციის კლიენტი — სლოტები ტრანზაქციის შიგნითაც მოწმდება. */
@@ -66,6 +66,8 @@ async function busyIntervals(db: Db, date: string, where: Prisma.AppointmentWher
     where: {
       ...where,
       status: { not: "cancelled" },
+      // ცოცხალი რიგი სლოტს არ იკავებს (ექიმის რიგში დგება, გრაფიკის გარეთ)
+      source: "booking",
       startTime: { gte: new Date(dayStart.getTime() - MAX_DURATION_MS), lt: dayEnd },
       endTime: { gt: dayStart },
     },
@@ -170,6 +172,7 @@ export async function loadDayAppointments({
       cancelReason: a.cancelReason,
       createdBy: a.createdBy ? fullName(a.createdBy) : null,
       isPast: a.startTime.getTime() <= now,
+      source: a.source,
       invoice: invoices.get(a.id) ?? null,
     })),
   };

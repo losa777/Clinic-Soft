@@ -37,7 +37,7 @@ export default async function ServicesPage() {
       at: formatDateTime(h.changedAt),
     })),
   }));
-  const categoryRows: CategoryRow[] = categories.map((c) => ({ id: c.id, name: c.name, services: c._count.services }));
+  const categoryRows: CategoryRow[] = categories.map((c) => ({ id: c.id, name: c.name, orderType: c.orderType, services: c._count.services }));
 
   return (
     <section className="flex flex-col gap-4">
