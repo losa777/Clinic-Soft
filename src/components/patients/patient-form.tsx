@@ -26,6 +26,8 @@ import {
 import { transliterate } from "@/lib/transliterate";
 import { cn } from "@/lib/utils";
 import { fieldErrorsOf } from "@/lib/zod-errors";
+import { NewPatientPolicy } from "@/modules/finance/components/new-patient-policy";
+import { EMPTY_POLICY_DRAFT, newPatientPolicySchema, type PolicyDraft, policyDraftInput } from "@/modules/finance/schema";
 import { DocumentsSection, type PendingDocument, releasePending } from "./documents-section";
 
 /** idle: პირადი ნომერი ჯერ არ შეყვანილა; found/new: ძებნის შედეგი. */
@@ -48,6 +50,8 @@ type Props = {
   initialValues?: Partial<Pick<PatientFormValues, "personalId" | "firstName" | "lastName">>;
   /** პაციენტის გვერდის მისამართი (`${patientHref}/${id}`): ახალი პაციენტის შენახვის შემდეგ და ნაპოვნ პაციენტზე */
   patientHref?: string;
+  /** რეგისტრაციისას პოლისის დამატება (აქტიური კომპანიები); არ არის — დაზღვევის ბლოკი არ ჩანს (უფლება არ აქვს) */
+  insuranceCompanies?: { id: number; name: string }[];
 };
 
 function initialValuesOf({ initialRecord, initialValues }: Props): PatientFormValues {
@@ -61,7 +65,7 @@ function initialValuesOf({ initialRecord, initialValues }: Props): PatientFormVa
  * დოკუმენტების სკანირება და ატვირთვა.
  */
 export function PatientForm(props: Props) {
-  const { canEdit, initialRecord, patientHref } = props;
+  const { canEdit, initialRecord, patientHref, insuranceCompanies } = props;
   const router = useRouter();
   const [values, setValues] = useState<PatientFormValues>(() => initialValuesOf(props));
   const [lookup, setLookup] = useState<Lookup>(() =>
@@ -69,6 +73,7 @@ export function PatientForm(props: Props) {
   );
   const [record, setRecord] = useState<PatientRecord | null>(initialRecord ?? null);
   const [pending, setPending] = useState<PendingDocument[]>([]);
+  const [policy, setPolicy] = useState<PolicyDraft>(EMPTY_POLICY_DRAFT);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, startSaving] = useTransition();
   const personalIdInput = useRef<HTMLInputElement>(null);
@@ -175,6 +180,7 @@ export function PatientForm(props: Props) {
   function clear() {
     releasePending(pending);
     setPending([]);
+    setPolicy(EMPTY_POLICY_DRAFT);
     setValues(EMPTY_PATIENT);
     setRecord(null);
     setLookup("idle");
@@ -199,6 +205,11 @@ export function PatientForm(props: Props) {
 
     const updateFields = lookup === "new" || canEdit;
     const fieldErrors = updateFields ? validateFields(values) : {};
+    const policyInput = lookup === "new" && insuranceCompanies ? policyDraftInput(policy) : null;
+    if (policyInput) {
+      const parsedPolicy = newPatientPolicySchema.safeParse(policyInput);
+      if (!parsedPolicy.success) Object.assign(fieldErrors, fieldErrorsOf(parsedPolicy.error));
+    }
     const docsError = validatePending();
     if (docsError) fieldErrors.documents = docsError;
     if (Object.keys(fieldErrors).length) {
@@ -211,6 +222,7 @@ export function PatientForm(props: Props) {
     const formData = new FormData();
     if (record) formData.set("patientId", String(record.id));
     if (updateFields) formData.set("patient", JSON.stringify(values));
+    if (policyInput) formData.set("policy", JSON.stringify(policyInput));
     formData.set("documents", JSON.stringify(pending.map((d) => ({ docType: d.docType, title: d.title }))));
     for (const d of pending) formData.append("files", d.blob, d.originalName);
 
@@ -402,6 +414,27 @@ export function PatientForm(props: Props) {
         </CardContent>
       </Card>
 
+      {/* დაზღვევა — მხოლოდ ახალი პაციენტის რეგისტრაციისას; შემდეგ — ბარათის „დაზღვევის“ ჩანართიდან */}
+      {insuranceCompanies && lookup === "new" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>დაზღვევა</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NewPatientPolicy
+              value={policy}
+              onChange={(next) => {
+                setPolicy(next);
+                setErrors((e) => Object.fromEntries(Object.entries(e).filter(([key]) => !(key in POLICY_FIELD_IDS))));
+              }}
+              companies={insuranceCompanies}
+              errors={errors}
+              disabled={saving}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>დოკუმენტები</CardTitle>
@@ -468,9 +501,17 @@ function validateFields(values: PatientFormValues): Record<string, string> {
   return parsed.success ? {} : fieldErrorsOf(parsed.error);
 }
 
+/** პოლისის ველების id-ები (NewPatientPolicy) — დანარჩენი ველები `patient-<key>`-ია. */
+const POLICY_FIELD_IDS: Record<string, string> = {
+  policyCompanyId: "policy-company",
+  policyNumber: "policy-number",
+  policyValidFrom: "policy-from",
+  policyValidTo: "policy-to",
+};
+
 function focusFirstError(errors: Record<string, string>) {
   const first = Object.keys(errors)[0];
-  document.getElementById(`patient-${first}`)?.focus();
+  document.getElementById(POLICY_FIELD_IDS[first] ?? `patient-${first}`)?.focus();
 }
 
 function LookupStatus({

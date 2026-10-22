@@ -2,6 +2,8 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import type { PatientRecord } from "@/lib/patient-schema";
+import { fromTetri } from "@/modules/finance/calc";
+import { patientDebts } from "@/modules/finance/server/debts";
 
 /**
  * პაციენტის წაკითხვა და ძებნა სერვერზე (გვერდებისა და Server Actions-ისთვის).
@@ -80,6 +82,8 @@ export type PatientSearchRow = {
   lastName: string;
   phone: string | null;
   birthDate: string;
+  /** ვალი ღია ინვოისებზე ("0.00" — არ აქვს) */
+  debt: string;
 };
 
 export type PatientSearchResult =
@@ -102,19 +106,42 @@ function nameCondition(first: string, last: string): Prisma.PatientWhereInput {
     : { firstName: { startsWith: first }, lastName: { startsWith: last } };
 }
 
+/** ტელეფონის ნომრად აკრეფილი ტექსტი: ციფრები და + ( ) - ჰარი. */
+const PHONE_INPUT = /^\+?[\d\s()-]+$/;
+
 /**
- * ძებნა პირადი ნომრით (სრულით ან დასაწყისით) ან სახელით/გვარით.
- * ყველა პირობა სიტყვის დასაწყისით (LIKE 'x%') იძებნება, ამიტომ მილიონობით ჩანაწერზეც ინდექსს იყენებს:
- * uq_patients_personal_id, idx_patients_name (last_name, first_name), idx_patients_first_name და ლათინური ანალოგები.
+ * ძებნა პირადი ნომრით ან ტელეფონით (ციფრებით) — ორივე სიტყვის დასაწყისით.
+ * phone_digits გენერირებული სვეტია: ნომერი მხოლოდ ციფრებით, 995-ის გარეშე (იხ. scripts/setup-db.ts).
  */
-export async function searchPatients(query: string): Promise<PatientSearchResult> {
+function numberCondition(q: string): PatientSearchResult | Prisma.PatientWhereInput {
+  let digits = q.replace(/\D/g, "");
+  if (/^995\d{9}$/.test(digits)) digits = digits.slice(3);
+  if (digits.length < 4) return { status: "invalid", error: "ნომრით საძიებლად შეიყვანეთ მინიმუმ 4 ციფრი" };
+  if (digits.length > 15) return { status: "invalid", error: "ნომერი ძალიან გრძელია" };
+  const byPhone: Prisma.PatientWhereInput = { phoneDigits: { startsWith: digits } };
+  if (digits.length > 11) return byPhone;
+  return { OR: [digits.length === 11 ? { personalId: digits } : { personalId: { startsWith: digits } }, byPhone] };
+}
+
+/**
+ * ძებნა პირადი ნომრით (სრულით ან დასაწყისით) ან სახელით/გვარით; `byPhone`-ით — ტელეფონითაც.
+ * ყველა პირობა სიტყვის დასაწყისით (LIKE 'x%') იძებნება, ამიტომ მილიონობით ჩანაწერზეც ინდექსს იყენებს:
+ * uq_patients_personal_id, idx_patients_phone_digits, idx_patients_name (last_name, first_name), idx_patients_first_name
+ * და ლათინური ანალოგები.
+ */
+export async function searchPatients(query: string, { byPhone = false } = {}): Promise<PatientSearchResult> {
   const q = query.trim().replace(/\s+/g, " ");
   if (!q) return { status: "empty" };
 
   let where: Prisma.PatientWhereInput;
   let kind: "personalId" | "name";
 
-  if (/^\d+$/.test(q)) {
+  if (byPhone && PHONE_INPUT.test(q)) {
+    const condition = numberCondition(q);
+    if ("status" in condition) return condition as PatientSearchResult;
+    kind = "personalId";
+    where = condition;
+  } else if (/^\d+$/.test(q)) {
     if (q.length < 4) return { status: "invalid", error: "პირადი ნომრით საძიებლად შეიყვანეთ მინიმუმ 4 ციფრი" };
     if (q.length > 11) return { status: "invalid", error: "პირადი ნომერი 11 ციფრისგან შედგება" };
     kind = "personalId";
@@ -150,10 +177,13 @@ export async function searchPatients(query: string): Promise<PatientSearchResult
     take: SEARCH_LIMIT + 1,
   });
 
+  const rows = found.slice(0, SEARCH_LIMIT);
+  // ვალიანი პაციენტი შედეგებში გაფრთხილებით ჩანს (ერთი აგრეგაციული მოთხოვნა ნაპოვნ პაციენტებზე)
+  const debts = await patientDebts(prisma, rows.map((p) => p.id));
   return {
     status: "ok",
     kind,
     hasMore: found.length > SEARCH_LIMIT,
-    rows: found.slice(0, SEARCH_LIMIT).map((p) => ({ ...p, birthDate: dateFormat.format(p.birthDate) })),
+    rows: rows.map((p) => ({ ...p, birthDate: dateFormat.format(p.birthDate), debt: fromTetri(debts.get(p.id) ?? 0) })),
   };
 }

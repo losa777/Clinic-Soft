@@ -6,19 +6,21 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-export type PickerItem = { id: number; label: string; detail?: string };
+/** keywords — დამატებითი საძიებო ტექსტი, რომელიც სიაში არ ჩანს (მაგ. სპეციალობის ექიმების გვარები). */
+export type PickerItem = { id: number; label: string; detail?: string; keywords?: string };
 
 const MAX_SHOWN = 50;
 
 /** ყოველი სიტყვა უნდა შედიოდეს დასახელებაში (რიგი არ აქვს მნიშვნელობა): „ბერ ნინ“ → „ნინო ბერიძე“. */
 function matches(item: PickerItem, words: string[]) {
-  const text = item.label.toLowerCase();
+  const text = `${item.label} ${item.keywords ?? ""}`.toLowerCase();
   return words.every((w) => text.includes(w));
 }
 
 /**
  * ძებნადი სია (combobox): აკრეფისას იფილტრება, ისრებით და Enter-ით ირჩევა.
- * არჩევის შემდეგ ტექსტი სუფთავდება — რამდენიმე ელემენტის ზედიზედ ასარჩევად.
+ * არჩევის შემდეგ ტექსტი სუფთავდება — რამდენიმე ელემენტის ზედიზედ ასარჩევად
+ * (closeOnSelect — ერთის ასარჩევად: არჩევისას სია იხურება).
  */
 export function SearchPicker({
   id,
@@ -28,6 +30,7 @@ export function SearchPicker({
   emptyText = "ვერაფერი მოიძებნა",
   invalid,
   autoFocus,
+  closeOnSelect,
 }: {
   id: string;
   items: PickerItem[];
@@ -36,12 +39,15 @@ export function SearchPicker({
   emptyText?: string;
   invalid?: boolean;
   autoFocus?: boolean;
+  closeOnSelect?: boolean;
 }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  // autoFocus-ის (გვერდის ჩატვირთვისას) ფოკუსი სიას არ ხსნის — მხოლოდ დაწკაპუნება, აკრეფა ან ისარი
+  const skipFocusOpen = useRef(Boolean(autoFocus));
   const position = useDropdownPosition(inputRef, open);
 
   const shown = useMemo(() => {
@@ -53,6 +59,7 @@ export function SearchPicker({
     onSelect(item);
     setQuery("");
     setActive(0);
+    if (closeOnSelect) setOpen(false);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -87,7 +94,11 @@ export function SearchPicker({
           setActive(0);
           setOpen(true);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          if (skipFocusOpen.current) skipFocusOpen.current = false;
+          else setOpen(true);
+        }}
+        onClick={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
@@ -110,11 +121,10 @@ export function SearchPicker({
               id={`${listId}-${item.id}`}
               role="option"
               aria-selected={i === active}
-              // mousedown: input-ს ფოკუსი არ ეკარგება (onBlur სიას არ დახურავს არჩევამდე)
-              onMouseDown={(e) => {
-                e.preventDefault();
-                select(item);
-              }}
+              // mousedown: input-ს ფოკუსი არ ეკარგება (onBlur სიას არ დახურავს არჩევამდე);
+              // არჩევა — click-ზე, რომ სია mousedown-ზე არ გაქრეს და click სხვა ელემენტს (მაგ. ველს) არ მოხვდეს
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => select(item)}
               onMouseEnter={() => setActive(i)}
               className={cn(
                 "flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5",

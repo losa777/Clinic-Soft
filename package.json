@@ -11,6 +11,8 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:setup": "tsx --env-file=.env.local scripts/setup-db.ts",
+    "db:seed": "tsx --env-file=.env.local scripts/seed-appointments.ts && tsx --env-file=.env.local --conditions=react-server scripts/seed-finance.ts",
+    "icd10:import": "tsx --env-file=.env.local scripts/import-icd10.ts",
     "user:create": "tsx --env-file=.env.local scripts/create-user.ts"
   },
   "dependencies": {

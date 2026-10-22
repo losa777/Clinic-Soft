@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Contact, LayoutDashboard, ShieldCheck, Users } from "lucide-react";
+import {
+  BriefcaseMedical,
+  ClipboardList,
+  Contact,
+  LayoutDashboard,
+  Settings,
+  ShieldCheck,
+  ShieldPlus,
+  Stethoscope,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -11,13 +21,17 @@ const LINKS = [
   { href: "/admin/roles", label: "როლები", icon: ShieldCheck },
   { href: "/admin/patients", label: "პაციენტები", icon: Contact },
   { href: "/admin/services", label: "სერვისები", icon: ClipboardList },
+  { href: "/admin/doctors", label: "ექიმები", icon: Stethoscope },
+  { href: "/admin/specialties", label: "სპეციალობები", icon: BriefcaseMedical },
+  { href: "/admin/insurance", label: "დაზღვევა", icon: ShieldPlus },
+  { href: "/admin/settings", label: "რეკვიზიტები", icon: Settings },
 ];
 
 export function AdminNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="-mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0">
+    <nav className="-mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0 print:hidden">
       <ul className="flex gap-1">
         {LINKS.map(({ href, label, icon: Icon }) => {
           const active = href === "/admin" ? pathname === href : pathname.startsWith(href);

@@ -1,0 +1,54 @@
+code,name_ka,name_en
+A09.9,გასტროენტერიტი და კოლიტი დაუზუსტებელი წარმოშობის,Gastroenteritis and colitis of unspecified origin
+B34.9,ვირუსული ინფექცია დაუზუსტებელი,"Viral infection, unspecified"
+D50.9,რკინადეფიციტური ანემია დაუზუსტებელი,"Iron deficiency anaemia, unspecified"
+E03.9,ჰიპოთირეოზი დაუზუსტებელი,"Hypothyroidism, unspecified"
+E05.9,თირეოტოქსიკოზი დაუზუსტებელი,"Thyrotoxicosis, unspecified"
+E11.9,ინსულინდამოუკიდებელი შაქრიანი დიაბეტი გართულებების გარეშე,Non-insulin-dependent diabetes mellitus without complications
+E55.9,D ვიტამინის დეფიციტი დაუზუსტებელი,"Vitamin D deficiency, unspecified"
+E66.9,სიმსუქნე დაუზუსტებელი,"Obesity, unspecified"
+E78.0,სუფთა ჰიპერქოლესტერინემია,Pure hypercholesterolaemia
+F32.9,დეპრესიული ეპიზოდი დაუზუსტებელი,"Depressive episode, unspecified"
+F41.1,გენერალიზებული შფოთვითი აშლილობა,Generalized anxiety disorder
+G43.9,შაკიკი დაუზუსტებელი,"Migraine, unspecified"
+G44.2,დაძაბულობის ტიპის თავის ტკივილი,Tension-type headache
+G47.0,ძილის დაწყებისა და შენარჩუნების დარღვევა (უძილობა),Disorders of initiating and maintaining sleep [insomnias]
+H10.9,კონიუნქტივიტი დაუზუსტებელი,"Conjunctivitis, unspecified"
+H25.9,ხანდაზმულობის კატარაქტა დაუზუსტებელი,"Senile cataract, unspecified"
+H40.9,გლაუკომა დაუზუსტებელი,"Glaucoma, unspecified"
+H52.1,მიოპია,Myopia
+H66.9,შუა ოტიტი დაუზუსტებელი,"Otitis media, unspecified"
+I10,ესენციური (პირველადი) ჰიპერტენზია,Essential (primary) hypertension
+I20.9,სტენოკარდია დაუზუსტებელი,"Angina pectoris, unspecified"
+I25.1,ათეროსკლეროზული გულის დაავადება,Atherosclerotic heart disease
+I48.9,წინაგულების ფიბრილაცია და თრთოლვა დაუზუსტებელი,"Atrial fibrillation and atrial flutter, unspecified"
+I50.9,გულის უკმარისობა დაუზუსტებელი,"Heart failure, unspecified"
+I63.9,თავის ტვინის ინფარქტი დაუზუსტებელი,"Cerebral infarction, unspecified"
+J00,მწვავე ნაზოფარინგიტი (ჩვეულებრივი სურდო),Acute nasopharyngitis [common cold]
+J02.9,მწვავე ფარინგიტი დაუზუსტებელი,"Acute pharyngitis, unspecified"
+J03.9,მწვავე ტონზილიტი დაუზუსტებელი,"Acute tonsillitis, unspecified"
+J06.9,ზედა სასუნთქი გზების მწვავე ინფექცია დაუზუსტებელი,"Acute upper respiratory infection, unspecified"
+J18.9,პნევმონია დაუზუსტებელი,"Pneumonia, unspecified"
+J20.9,მწვავე ბრონქიტი დაუზუსტებელი,"Acute bronchitis, unspecified"
+J44.9,ფილტვის ქრონიკული ობსტრუქციული დაავადება დაუზუსტებელი,"Chronic obstructive pulmonary disease, unspecified"
+J45.9,ასთმა დაუზუსტებელი,"Asthma, unspecified"
+K21.9,გასტროეზოფაგური რეფლუქსის დაავადება ეზოფაგიტის გარეშე,Gastro-oesophageal reflux disease without oesophagitis
+K29.7,გასტრიტი დაუზუსტებელი,"Gastritis, unspecified"
+K59.0,შეკრულობა,Constipation
+K76.0,ღვიძლის ცხიმოვანი დისტროფია,"Fatty (change of) liver, not elsewhere classified"
+K80.2,ნაღვლის ბუშტის კენჭი ქოლეცისტიტის გარეშე,Calculus of gallbladder without cholecystitis
+L20.9,ატოპიური დერმატიტი დაუზუსტებელი,"Atopic dermatitis, unspecified"
+L30.9,დერმატიტი დაუზუსტებელი,"Dermatitis, unspecified"
+M17.9,გონართროზი დაუზუსტებელი,"Gonarthrosis, unspecified"
+M54.2,ცერვიკალგია,Cervicalgia
+M54.5,წელის ტკივილი,Low back pain
+M81.9,ოსტეოპოროზი დაუზუსტებელი,"Osteoporosis, unspecified"
+N30.0,მწვავე ცისტიტი,Acute cystitis
+N39.0,საშარდე გზების ინფექცია ლოკალიზაციის დაუზუსტებლად,"Urinary tract infection, site not specified"
+N40,წინამდებარე ჯირკვლის ჰიპერპლაზია,Hyperplasia of prostate
+R05,ხველა,Cough
+R10.4,მუცლის სხვა და დაუზუსტებელი ტკივილი,Other and unspecified abdominal pain
+R50.9,ცხელება დაუზუსტებელი,"Fever, unspecified"
+R51,თავის ტკივილი,Headache
+U07.1,"COVID-19, ვირუსი იდენტიფიცირებულია","COVID-19, virus identified"
+Z00.0,ზოგადი სამედიცინო გასინჯვა,General medical examination

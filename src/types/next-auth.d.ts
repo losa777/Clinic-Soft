@@ -5,6 +5,8 @@ interface ClinicUserFields {
   lastName: string;
   roleCode: string;
   roleName: string;
+  /** როლის უფლებების კოდები (src/lib/permissions.ts) */
+  permissions: string[];
 }
 
 declare module "next-auth" {

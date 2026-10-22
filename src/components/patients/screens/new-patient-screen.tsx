@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import { PatientForm } from "@/components/patients/patient-form";
+import { requireUser } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { type PatientRoutes, patientUrl } from "@/lib/patient-routes";
 import { PERSONAL_ID_PATTERN } from "@/lib/patient-schema";
+import { can } from "@/lib/permissions";
+import { loadActiveCompanies } from "@/modules/finance/server/insurance";
 
 const param = (v: string | string[] | undefined) => (typeof v === "string" ? v.trim().slice(0, 100) : "");
 
@@ -23,6 +26,11 @@ export async function NewPatientScreen({
     if (existing) redirect(patientUrl(routes, existing.id));
   }
 
+  // დაზღვევის ბლოკი რეგისტრაციის ფორმაში — მხოლოდ პოლისის დამატების უფლებით
+  const user = await requireUser();
+  const insuranceCompanies =
+    can(user, "invoices.create") || can(user, "insurance.manage") ? await loadActiveCompanies() : undefined;
+
   return (
     <section className="flex flex-col gap-4">
       <div>
@@ -32,6 +40,7 @@ export async function NewPatientScreen({
       <PatientForm
         canEdit={false}
         patientHref={routes.patients}
+        insuranceCompanies={insuranceCompanies}
         initialValues={{
           personalId: validId ? personalId : "",
           firstName: param(params.firstName),

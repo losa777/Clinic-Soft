@@ -19,7 +19,11 @@ import {
   patientSchema,
   personalIdSchema,
 } from "@/lib/patient-schema";
+import { can } from "@/lib/permissions";
 import { PATIENT_EDITOR_ROLE, PATIENT_REGISTRAR_ROLE, PATIENT_ROLES } from "@/lib/roles";
+import { type NewPatientPolicy, newPatientPolicySchema } from "@/modules/finance/schema";
+import { FinanceError } from "@/modules/finance/server/errors";
+import { createPatientPolicy } from "@/modules/finance/server/insurance";
 
 export type FindPatientResult = { ok: true; record: PatientRecord | null } | { ok: false; error: string };
 
@@ -116,6 +120,11 @@ export async function savePatient(formData: FormData): Promise<PatientSaveResult
   if (!parsed.success) return invalid(parsed.error);
   const data = { ...parsed.data, birthDate: new Date(`${parsed.data.birthDate}T00:00:00Z`) };
 
+  // პოლისი — მხოლოდ ახალი პაციენტის რეგისტრაციისას (არსებულს ბარათის „დაზღვევის“ ჩანართიდან ემატება)
+  const policy = patientId === null ? readPolicy(formData) : null;
+  if (policy && "ok" in policy) return policy;
+  if (policy && !can(me, "invoices.create") && !can(me, "insurance.manage")) return failure("პოლისის დამატების უფლება არ გაქვთ");
+
   const uploads = await readUploads(formData);
   if (typeof uploads === "string") return failure(uploads);
   const stored = await storeUploads(uploads, userId);
@@ -131,12 +140,14 @@ export async function savePatient(formData: FormData): Promise<PatientSaveResult
         if (stored.length) {
           await tx.patientDocument.createMany({ data: stored.map((s) => ({ ...s, patientId: patient.id })) });
         }
+        if (policy) await createPatientPolicy(tx, patient.id, policy, userId);
         return patient.id;
       },
       { timeout: 15_000 },
     );
   } catch (error) {
     await removeDocuments(stored.map((s) => s.storagePath));
+    if (error instanceof FinanceError) return failure(error.message, error.fieldErrors);
     if (isUniqueViolation(error)) return failure("პაციენტი უკვე არსებობს", PERSONAL_ID_TAKEN);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return failure("პაციენტი ვერ მოიძებნა");
@@ -146,7 +157,22 @@ export async function savePatient(formData: FormData): Promise<PatientSaveResult
 
   const record = (await loadPatientRecord({ id }))!;
   const docs = stored.length ? `, დოკუმენტი: ${stored.length}` : "";
-  return { ok: true, message: (patientId === null ? "პაციენტი დარეგისტრირდა" : "ცვლილებები შენახულია") + docs, record };
+  const insured = policy ? ", პოლისი დაემატა" : "";
+  return { ok: true, message: (patientId === null ? "პაციენტი დარეგისტრირდა" : "ცვლილებები შენახულია") + docs + insured, record };
+}
+
+/** FormData-ს „policy“ (JSON): null — პაციენტი დაზღვეული არ არის; ActionFailure — ველები არასწორია. */
+function readPolicy(formData: FormData): NewPatientPolicy | ActionFailure | null {
+  const raw = formData.get("policy");
+  if (!raw) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(String(raw));
+  } catch {
+    return failure("პოლისის მონაცემები არასწორია");
+  }
+  const parsed = newPatientPolicySchema.safeParse(value);
+  return parsed.success ? parsed.data : invalid(parsed.error);
 }
 
 /** არსებულ პაციენტზე ახალი დოკუმენტების მიბმა (პაციენტის მონაცემები არ იცვლება). */

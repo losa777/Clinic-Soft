@@ -25,10 +25,20 @@ export const DOCUMENT_TYPES = [
   { value: "other", label: "სხვა" },
 ] as const;
 
+/** ტიპები, რომლებსაც სისტემა თვითონ ანიჭებს (ხელით ატვირთვისას არ ჩანს): კვლევის შედეგი, სამედიცინო დოკუმენტი (PDF). */
+export const SYSTEM_DOCUMENT_TYPES = [
+  { value: "lab_result", label: "ლაბორატორიული შედეგი" },
+  { value: "imaging", label: "ინსტრუმენტული კვლევა" },
+  { value: "medical", label: "სამედიცინო დოკუმენტი" },
+] as const;
+
+/** ატვირთვის ფორმის ტიპი. */
 export type DocumentType = (typeof DOCUMENT_TYPES)[number]["value"];
+/** ბაზაში შენახული ნებისმიერი ტიპი. */
+export type StoredDocumentType = DocumentType | (typeof SYSTEM_DOCUMENT_TYPES)[number]["value"];
 
 export function documentTypeLabel(type: string): string {
-  return DOCUMENT_TYPES.find((t) => t.value === type)?.label ?? "სხვა";
+  return [...DOCUMENT_TYPES, ...SYSTEM_DOCUMENT_TYPES].find((t) => t.value === type)?.label ?? "სხვა";
 }
 
 export const DEFAULT_COUNTRY = "საქართველო";
@@ -152,7 +162,7 @@ export type DocumentMeta = z.infer<typeof documentMetaSchema>;
 /** ბაზაში შენახული დოკუმენტი (ფაილი იკითხება /api/patient-documents/<id>-ით). */
 export type StoredDocument = {
   id: number;
-  docType: DocumentType;
+  docType: StoredDocumentType;
   title: string;
   originalName: string;
   mimeType: string;

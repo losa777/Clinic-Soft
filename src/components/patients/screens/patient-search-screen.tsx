@@ -1,11 +1,15 @@
 import Link from "next/link";
-import { ArrowRight, ClipboardPlus, SearchX, UserPlus } from "lucide-react";
+import { ArrowRight, FilePlus2, SearchX, UserPlus } from "lucide-react";
 import { PatientSearchInput } from "@/components/patients/patient-search-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { requireUser } from "@/lib/dal";
 import { type PatientSearchRow, SEARCH_LIMIT, searchPatients } from "@/lib/patient-records";
-import { newVisitUrl, type PatientRoutes, patientUrl } from "@/lib/patient-routes";
+import { type PatientRoutes, patientUrl } from "@/lib/patient-routes";
+import { can } from "@/lib/permissions";
+import { DebtBadge } from "@/modules/finance/components/invoice-status-badge";
+import { newInvoiceUrl } from "@/modules/finance/routes";
 
 /** ძებნის ტექსტიდან რეგისტრაციის ფორმის წინასწარი მნიშვნელობები. */
 function registerHref(newPatient: string, query: string, kind: "personalId" | "name") {
@@ -24,12 +28,14 @@ function registerHref(newPatient: string, query: string, kind: "personalId" | "n
 
 /**
  * პაციენტის ძებნა სახელით/გვარით ან პირადი ნომრით (რეგისტრატორი და ადმინი).
- * რეგისტრაციის და მიღების ღილაკები ჩანს მხოლოდ იმ როლზე, რომელსაც ეს აქვს (routes).
+ * რეგისტრაციის ღილაკი ჩანს მხოლოდ იმ როლზე, რომელსაც ეს აქვს (routes), ინვოისის — უფლებით (invoices.create).
+ * ვალიანი პაციენტი გაფრთხილების ნიშნით ჩანს.
  */
 export async function PatientSearchScreen({ routes, rawQuery }: { routes: PatientRoutes; rawQuery: string | string[] | undefined }) {
   const query = (typeof rawQuery === "string" ? rawQuery : "").trim().replace(/\s+/g, " ");
-  const result = await searchPatients(query);
+  const [result, user] = await Promise.all([searchPatients(query), requireUser()]);
   const { newPatient } = routes;
+  const canInvoice = can(user, "invoices.create");
 
   return (
     <section className="flex flex-col gap-4">
@@ -75,7 +81,11 @@ export async function PatientSearchScreen({ routes, rawQuery }: { routes: Patien
           <ul className="flex flex-col gap-3">
             {result.rows.map((p) => (
               <li key={p.id}>
-                <PatientCard routes={routes} patient={p} />
+                <PatientCard
+                  routes={routes}
+                  patient={p}
+                  invoiceHref={routes.finance && canInvoice ? newInvoiceUrl(routes.finance, { patientId: p.id }) : null}
+                />
               </li>
             ))}
           </ul>
@@ -94,8 +104,7 @@ export async function PatientSearchScreen({ routes, rawQuery }: { routes: Patien
   );
 }
 
-function PatientCard({ routes, patient: p }: { routes: PatientRoutes; patient: PatientSearchRow }) {
-  const visitHref = newVisitUrl(routes, p.id);
+function PatientCard({ routes, patient: p, invoiceHref }: { routes: PatientRoutes; patient: PatientSearchRow; invoiceHref: string | null }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -106,11 +115,12 @@ function PatientCard({ routes, patient: p }: { routes: PatientRoutes; patient: P
           <Field label="პირადი ნომერი" value={p.personalId} mono />
           <Field label="დაბადების თარიღი" value={p.birthDate} />
         </dl>
-        <div className="flex flex-wrap gap-2">
-          {visitHref && (
-            <Link href={visitHref} className={buttonVariants({ size: "lg" })}>
-              <ClipboardPlus />
-              მიღება
+        <div className="flex flex-wrap items-center gap-2">
+          <DebtBadge debt={p.debt} />
+          {invoiceHref && (
+            <Link href={invoiceHref} className={buttonVariants({ size: "lg" })}>
+              <FilePlus2 />
+              ინვოისი
             </Link>
           )}
           <Link href={patientUrl(routes, p.id)} className={buttonVariants({ variant: "outline", size: "lg" })}>

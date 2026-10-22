@@ -3,16 +3,18 @@
 import { useMemo, useState, useTransition } from "react";
 import { type SortingState, useTable } from "@tanstack/react-table";
 import { type AppColumnDef, tableFeatureSet } from "@/lib/table";
-import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ALL_PERMISSIONS, FULL_ACCESS_ROLE } from "@/lib/permissions";
 import { deleteRole } from "./actions";
+import { PermissionsDialog } from "./permissions-dialog";
 import { RoleDialog } from "./role-dialog";
 
-export type RoleRow = { id: number; code: string; name: string; userCount: number; isSystem: boolean };
+export type RoleRow = { id: number; code: string; name: string; userCount: number; isSystem: boolean; permissions: string[] };
 
 export function RolesTable({ data }: { data: RoleRow[] }) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -20,6 +22,7 @@ export function RolesTable({ data }: { data: RoleRow[] }) {
   const [editing, setEditing] = useState<RoleRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState<RoleRow | null>(null);
+  const [permissionsOf, setPermissionsOf] = useState<RoleRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   function openDialog(role: RoleRow | null) {
@@ -69,6 +72,17 @@ export function RolesTable({ data }: { data: RoleRow[] }) {
           ) : (
             <Badge variant="outline">დამატებითი</Badge>
           ),
+      },
+      {
+        id: "permissions",
+        header: "უფლებები",
+        accessorFn: (r) => r.permissions.length,
+        cell: ({ row: { original: r } }) => (
+          <Button variant="outline" size="sm" onClick={() => setPermissionsOf(r)}>
+            <KeyRound />
+            {r.code === FULL_ACCESS_ROLE ? "ყველა" : `${r.permissions.length} / ${ALL_PERMISSIONS.length}`}
+          </Button>
+        ),
       },
       {
         id: "actions",
@@ -128,6 +142,8 @@ export function RolesTable({ data }: { data: RoleRow[] }) {
       <DataTable table={table} />
 
       <RoleDialog open={dialogOpen} onOpenChange={setDialogOpen} role={editing} />
+
+      <PermissionsDialog role={permissionsOf} onOpenChange={(open) => !open && setPermissionsOf(null)} />
 
       <ConfirmDialog
         open={deleting !== null}

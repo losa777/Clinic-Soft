@@ -5,6 +5,7 @@ import { z } from "zod";
 import { type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { ALL_PERMISSIONS, FULL_ACCESS_ROLE, isPermission } from "@/lib/permissions";
 import { RESERVED_ROLE_CODES, ROLE_CODE_PATTERN, isSystemRole } from "@/lib/roles";
 
 const roleName = z.string().trim().min(2, "შეიყვანეთ როლის სახელი").max(50, "მაქსიმუმ 50 სიმბოლო");
@@ -51,6 +52,34 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
   if (count === 0) return failure("როლი ვერ მოიძებნა");
   revalidatePath(PATH);
   return success("როლის სახელი შეიცვალა");
+}
+
+const permissionsSchema = z.object({
+  roleId: z.number().int().positive(),
+  codes: z.array(z.string().refine(isPermission, "უცნობი უფლება")).max(ALL_PERMISSIONS.length),
+});
+
+/**
+ * როლის უფლებები (მთლიანად იცვლება). ადმინისტრატორის როლს ყოველთვის ყველა უფლება აქვს — მისი შეცვლა არ შეიძლება.
+ * ცვლილება მაშინვე მოქმედებს: სესია უფლებებს ყოველ მოთხოვნაზე ბაზიდან კითხულობს.
+ */
+export async function setRolePermissions(input: z.input<typeof permissionsSchema>): Promise<ActionResult> {
+  await requireRole("admin");
+  const parsed = permissionsSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { roleId, codes } = parsed.data;
+
+  const role = await prisma.role.findUnique({ where: { id: roleId } });
+  if (!role) return failure("როლი ვერ მოიძებნა");
+  if (role.code === FULL_ACCESS_ROLE) return failure("ადმინისტრატორს ყველა უფლება აქვს — შეცვლა შეუძლებელია");
+
+  const permissions = await prisma.permission.findMany({ where: { code: { in: codes } }, select: { id: true } });
+  await prisma.$transaction([
+    prisma.rolePermission.deleteMany({ where: { roleId } }),
+    prisma.rolePermission.createMany({ data: permissions.map((p) => ({ roleId, permissionId: p.id })) }),
+  ]);
+  revalidatePath(PATH);
+  return success(`„${role.name}“: უფლებები შენახულია (${permissions.length})`);
 }
 
 export async function deleteRole(id: number): Promise<ActionResult> {

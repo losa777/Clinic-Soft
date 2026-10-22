@@ -122,7 +122,7 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
         filterFn: (row, _id, active: boolean) => row.original.isActive === active,
         cell: ({ row }) =>
           row.original.isActive ? (
-            <Badge className="bg-emerald-50 text-emerald-700">აქტიური</Badge>
+            <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">აქტიური</Badge>
           ) : (
             <Badge variant="outline" className="text-muted-foreground">
               გათიშული

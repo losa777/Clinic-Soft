@@ -3,6 +3,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { ALL_PERMISSIONS, FULL_ACCESS_ROLE } from "@/lib/permissions";
 
 const credentialsSchema = z.object({
   username: z.string().trim().min(1).max(50),
@@ -11,7 +12,10 @@ const credentialsSchema = z.object({
 
 /** სესიაში შესანახი ველები ბაზის ჩანაწერიდან. */
 async function loadSessionUser(where: { id: number } | { username: string }) {
-  const user = await prisma.user.findUnique({ where, include: { role: true } });
+  const user = await prisma.user.findUnique({
+    where,
+    include: { role: { include: { permissions: { select: { permission: { select: { code: true } } } } } } },
+  });
   if (!user || !user.isActive) return null;
   return {
     user,
@@ -21,6 +25,8 @@ async function loadSessionUser(where: { id: number } | { username: string }) {
       lastName: user.lastName,
       roleCode: user.role.code,
       roleName: user.role.name,
+      // ადმინს ყველა უფლება აქვს (ბაზის მინიჭების მიუხედავად)
+      permissions: user.role.code === FULL_ACCESS_ROLE ? ALL_PERMISSIONS : user.role.permissions.map((p) => p.permission.code),
     },
   };
 }
@@ -62,6 +68,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.lastName = token.lastName;
       session.user.roleCode = token.roleCode;
       session.user.roleName = token.roleName;
+      session.user.permissions = token.permissions ?? [];
       return session;
     },
   },

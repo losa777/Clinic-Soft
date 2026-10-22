@@ -11,12 +11,42 @@ datasource db {
 }
 
 model Role {
-  id    Int    @id @default(autoincrement())
-  code  String @unique @db.VarChar(30)
-  name  String @db.VarChar(50)
-  users User[]
+  id          Int              @id @default(autoincrement())
+  code        String           @unique @db.VarChar(30)
+  name        String           @db.VarChar(50)
+  users       User[]
+  permissions RolePermission[]
 
   @@map("roles")
+}
+
+/// უფლება (მაგ. invoices.create). სია: src/lib/permissions.ts; ბაზაში იწერება npm run db:setup-ით.
+model Permission {
+  id    Int              @id @default(autoincrement())
+  code  String           @unique(map: "uq_permissions_code") @db.VarChar(50)
+  name  String           @db.VarChar(100)
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// კლინიკის პარამეტრები (key → value), მაგ. ქვითრის რეკვიზიტები. სია: src/modules/finance/settings.ts.
+model Setting {
+  key   String @id @db.VarChar(50)
+  value String @db.Text
+
+  @@map("settings")
 }
 
 model User {
@@ -33,11 +63,33 @@ model User {
   patientsCreated   Patient[]         @relation("PatientCreatedBy")
   patientsUpdated   Patient[]         @relation("PatientUpdatedBy")
   documentsUploaded PatientDocument[]
-  doctorVisits      Visit[]           @relation("VisitDoctor")
-  visitsCreated     Visit[]           @relation("VisitCreatedBy")
-  visitsUpdated     Visit[]           @relation("VisitUpdatedBy")
-  visitsCancelled   Visit[]           @relation("VisitCancelledBy")
-  paymentsTaken     VisitPayment[]
+
+  doctorProfile         Doctor?
+  appointmentsCreated   Appointment[] @relation("AppointmentCreatedBy")
+  appointmentsUpdated   Appointment[] @relation("AppointmentUpdatedBy")
+  appointmentsCancelled Appointment[] @relation("AppointmentCancelledBy")
+
+  priceChanges       ServicePriceHistory[]
+  insurancesCreated  PatientInsurance[]
+  invoiceDoctor      Invoice[]             @relation("InvoiceDoctor")
+  invoicesCreated    Invoice[]             @relation("InvoiceCreatedBy")
+  invoicesCancelled  Invoice[]             @relation("InvoiceCancelledBy")
+  paymentsCreated    Payment[]
+  cashShifts         CashShift[]
+  receiptPrints      ReceiptPrint[]
+
+  allergiesCreated     PatientAllergy[]
+  conditionsCreated    PatientCondition[]
+  medicationsCreated   PatientMedication[]
+  encounters           Encounter[]         @relation("EncounterDoctor")
+  doctorTemplates      DoctorTemplate[]
+  prescriptionsCreated Prescription[]
+  ordersCreated        MedicalOrder[]      @relation("OrderCreatedBy")
+  ordersPerformed      MedicalOrder[]      @relation("OrderPerformedBy")
+  documentsCreated     MedicalDocument[]
+  signatures           DocumentSignature[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
 
   @@index([roleId])
   @@map("users")
@@ -55,11 +107,15 @@ enum MaritalStatus {
   widowed
 }
 
+/// lab_result / imaging — კვლევის შედეგი (ლაბორანტი ტვირთავს); medical — გენერირებული სამედიცინო დოკუმენტი (PDF)
 enum DocumentType {
   id_card
   passport
   insurance
   other
+  lab_result
+  imaging
+  medical
 }
 
 model Patient {
@@ -74,6 +130,10 @@ model Patient {
   gender        Gender
   maritalStatus MaritalStatus? @map("marital_status")
   phone         String?        @db.VarChar(30)
+  /// სისხლის ჯგუფი: O+ O- A+ A- B+ B- AB+ AB- (ავსებს ექიმი)
+  bloodGroup    String?        @map("blood_group") @db.VarChar(3)
+  /// გენერირებული სვეტი (STORED): phone მხოლოდ ციფრებით, ტელეფონით ძებნისთვის. აქ არასოდეს იწერება.
+  phoneDigits   String?        @map("phone_digits") @db.VarChar(30)
   email         String?        @db.VarChar(255)
   country       String?        @db.VarChar(100)
   city          String?        @db.VarChar(100)
@@ -90,9 +150,20 @@ model Patient {
   createdBy     User?          @relation("PatientCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy     User?          @relation("PatientUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   documents     PatientDocument[]
-  visits        Visit[]
+  appointments  Appointment[]
+  insurances    PatientInsurance[]
+  invoices      Invoice[]
+  allergies        PatientAllergy[]
+  conditions       PatientCondition[]
+  medications      PatientMedication[]
+  encounters       Encounter[]
+  prescriptions    Prescription[]
+  medicalOrders    MedicalOrder[]
+  medicalDocuments MedicalDocument[]
+  auditLogs        AuditLog[]
 
   @@index([lastName, firstName], map: "idx_patients_name")
+  @@index([phoneDigits], map: "idx_patients_phone_digits")
   @@index([firstName], map: "idx_patients_first_name")
   @@index([lastNameEn, firstNameEn], map: "idx_patients_name_en")
   @@index([firstNameEn], map: "idx_patients_first_name_en")
@@ -101,100 +172,59 @@ model Patient {
   @@map("patients")
 }
 
+/// სერვისების კატეგორია (კონსულტაცია, ლაბორატორია, დიაგნოსტიკა...).
+model ServiceCategory {
+  id        Int                 @id @default(autoincrement())
+  name      String              @unique(map: "uq_service_categories_name") @db.VarChar(100)
+  services  Service[]
+  contracts InsuranceContract[]
+
+  @@map("service_categories")
+}
+
 /// კლინიკის სერვისები (ფასი ლარში). code — ICD-10 კოდი: არასავალდებულო (null — არ არის), არ არის უნიკალური.
+/// არ იშლება — დეაქტივირდება (is_active = 0), რადგან ინვოისებშია გამოყენებული.
 model Service {
-  id        Int      @id @default(autoincrement())
-  code      String?  @db.VarChar(30)
-  name      String   @unique(map: "uq_services_name") @db.VarChar(255)
-  price     Decimal  @db.Decimal(10, 2)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
-  visitServices VisitService[]
+  id         Int      @id @default(autoincrement())
+  code       String?  @db.VarChar(30)
+  name       String   @unique(map: "uq_services_name") @db.VarChar(255)
+  categoryId Int?     @map("category_id")
+  price      Decimal  @db.Decimal(12, 2)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  category   ServiceCategory?      @relation(fields: [categoryId], references: [id])
+  priceHistory ServicePriceHistory[]
+  invoiceItems InvoiceItem[]
+  contracts    InsuranceContract[]
+  consultationDoctors Doctor[]     @relation("DoctorConsultation")
+  medicalOrders       MedicalOrder[]
 
   @@index([code], map: "idx_services_code")
+  @@index([categoryId, isActive], map: "idx_services_category")
   @@map("services")
 }
 
-/// პაციენტის მიღება (ვიზიტი): ექიმი, დრო, თანხა. ექიმის სახელი და სერვისები ინახება იმ მომენტის მდგომარეობით.
-model Visit {
-  id          Int            @id @default(autoincrement())
-  patientId   Int            @map("patient_id")
-  doctorId    Int?           @map("doctor_id")
-  doctorName  String         @map("doctor_name") @db.VarChar(201)
-  visitAt     DateTime       @map("visit_at") @db.DateTime(0)
-  visitType   VisitType      @default(outpatient) @map("visit_type")
-  totalAmount Decimal        @map("total_amount") @db.Decimal(10, 2)
-  paidAmount  Decimal        @map("paid_amount") @db.Decimal(10, 2)
-  comment       String?        @db.Text
-  status        VisitStatus    @default(active)
-  cancelReason  String?        @map("cancel_reason") @db.VarChar(500)
-  cancelledById Int?           @map("cancelled_by")
-  cancelledAt   DateTime?      @map("cancelled_at") @db.DateTime(0)
-  createdById   Int?           @map("created_by")
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
-  updatedById   Int?           @map("updated_by")
-  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
-  patient       Patient        @relation(fields: [patientId], references: [id])
-  doctor        User?          @relation("VisitDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
-  createdBy     User?          @relation("VisitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy     User?          @relation("VisitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  cancelledBy   User?          @relation("VisitCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  services      VisitService[]
-  payments      VisitPayment[]
+/// ფასის ცვლილების ისტორია (ჩანაწერი არ იცვლება და არ იშლება).
+model ServicePriceHistory {
+  id          Int      @id @default(autoincrement())
+  serviceId   Int      @map("service_id")
+  oldPrice    Decimal  @map("old_price") @db.Decimal(12, 2)
+  newPrice    Decimal  @map("new_price") @db.Decimal(12, 2)
+  changedById Int?     @map("changed_by")
+  changedAt   DateTime @default(now()) @map("changed_at") @db.DateTime(0)
+  service     Service  @relation(fields: [serviceId], references: [id])
+  changedBy   User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
 
-  @@index([patientId, visitAt], map: "idx_visits_patient")
-  @@index([doctorId, visitAt], map: "idx_visits_doctor")
-  @@index([createdById])
-  @@map("visits")
-}
-
-enum VisitStatus {
-  active
-  cancelled
+  @@index([serviceId, changedAt], map: "idx_service_price_history_service")
+  @@index([changedById])
+  @@map("service_price_history")
 }
 
 /// მიღების ტიპი: ამბულატორიული ან დღის სტაციონარი
 enum VisitType {
   outpatient
   day_hospital
-}
-
-/// გადახდის ფორმა: ნაღდი ან უნაღდო
-enum PaymentMethod {
-  cash
-  cashless
-}
-
-/// ვიზიტზე შემოტანილი თანხა (პირველადი ან მოგვიანებით). Visit.paidAmount = ჯამი.
-model VisitPayment {
-  id          Int           @id @default(autoincrement())
-  visitId     Int           @map("visit_id")
-  amount      Decimal       @db.Decimal(10, 2)
-  method      PaymentMethod @default(cash)
-  createdById Int?     @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(0)
-  visit       Visit    @relation(fields: [visitId], references: [id])
-  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-
-  @@index([visitId])
-  @@index([createdById])
-  @@map("visit_payments")
-}
-
-/// ვიზიტის სერვისი: დასახელება და ფასი ინახება მიღების მომენტისთვის (სერვისის შეცვლა/წაშლა ისტორიას არ ცვლის).
-model VisitService {
-  id          Int      @id @default(autoincrement())
-  visitId     Int      @map("visit_id")
-  serviceId   Int?     @map("service_id")
-  serviceCode String?  @map("service_code") @db.VarChar(30)
-  serviceName String   @map("service_name") @db.VarChar(255)
-  price       Decimal  @db.Decimal(10, 2)
-  visit       Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  service     Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-
-  @@index([visitId])
-  @@index([serviceId])
-  @@map("visit_services")
 }
 
 model PatientDocument {
@@ -210,8 +240,673 @@ model PatientDocument {
   uploadedAt   DateTime     @default(now()) @map("uploaded_at") @db.Timestamp(0)
   patient      Patient      @relation(fields: [patientId], references: [id])
   uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  orderResults MedicalOrder[]
+  medicalDocuments MedicalDocument[]
 
   @@index([patientId])
   @@index([uploadedById])
   @@map("patient_documents")
+}
+
+/// ექიმის სპეციალობა (თერაპევტი, კარდიოლოგი...).
+model Specialty {
+  id      Int      @id @default(autoincrement())
+  name    String   @unique(map: "uq_specialties_name") @db.VarChar(100)
+  doctors Doctor[]
+
+  @@map("specialties")
+}
+
+/// ექიმის პროფილი ჯავშნებისთვის: მომხმარებელი (როლით „ექიმი“), სპეციალობა, ვიზიტის ხანგრძლივობა.
+/// consultationServiceId — ექიმის კონსულტაციის სერვისი: ჯავშნიდან ინვოისში ავტომატურად ჩაჯდება.
+model Doctor {
+  id                    Int              @id @default(autoincrement())
+  userId                Int              @unique(map: "uq_doctors_user_id") @map("user_id")
+  specialtyId           Int              @map("specialty_id")
+  visitDuration         Int              @default(30) @map("visit_duration") @db.SmallInt
+  room                  String?          @db.VarChar(20)
+  isActive              Boolean          @default(true) @map("is_active")
+  consultationServiceId Int?             @map("consultation_service_id")
+  user                  User             @relation(fields: [userId], references: [id])
+  specialty             Specialty        @relation(fields: [specialtyId], references: [id])
+  consultationService   Service?         @relation("DoctorConsultation", fields: [consultationServiceId], references: [id], onDelete: SetNull)
+  schedules             DoctorSchedule[]
+  appointments          Appointment[]
+
+  @@index([specialtyId, isActive], map: "idx_doctors_specialty")
+  @@index([consultationServiceId])
+  @@map("doctors")
+}
+
+/// ექიმის სამუშაო გრაფიკი: კვირის დღე (1 — ორშაბათი ... 7 — კვირა) და დრო თბილისის დროით.
+/// ერთ დღეს შეიძლება რამდენიმე ინტერვალი ჰქონდეს (მაგ. შესვენებით).
+model DoctorSchedule {
+  id        Int      @id @default(autoincrement())
+  doctorId  Int      @map("doctor_id")
+  weekday   Int      @db.TinyInt
+  startTime DateTime @map("start_time") @db.Time(0)
+  endTime   DateTime @map("end_time") @db.Time(0)
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, weekday], map: "idx_doctor_schedules_doctor")
+  @@map("doctor_schedules")
+}
+
+/// booked → arrived (რეგისტრატურა) → in_progress (ექიმმა დაიწყო მიღება) → completed (ექიმმა დაასრულა); ან cancelled / no_show
+enum AppointmentStatus {
+  booked
+  arrived
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+/// ექიმთან ვიზიტის ჯავშანი. დრო ინახება UTC-ში (DATETIME), ჩვენება — Asia/Tbilisi.
+model Appointment {
+  id            Int               @id @default(autoincrement())
+  patientId     Int               @map("patient_id")
+  doctorId      Int               @map("doctor_id")
+  startTime     DateTime          @map("start_time") @db.DateTime(0)
+  endTime       DateTime          @map("end_time") @db.DateTime(0)
+  status        AppointmentStatus @default(booked)
+  comment       String?           @db.VarChar(1000)
+  cancelReason  String?           @map("cancel_reason") @db.VarChar(500)
+  cancelledById Int?              @map("cancelled_by")
+  cancelledAt   DateTime?         @map("cancelled_at") @db.DateTime(0)
+  createdById   Int?              @map("created_by")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedById   Int?              @map("updated_by")
+  updatedAt     DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  patient       Patient           @relation(fields: [patientId], references: [id])
+  doctor        Doctor            @relation(fields: [doctorId], references: [id])
+  createdBy     User?             @relation("AppointmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?             @relation("AppointmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cancelledBy   User?             @relation("AppointmentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  invoices      Invoice[]
+  encounter     Encounter?
+
+  @@index([doctorId, startTime], map: "idx_appointments_doctor_start")
+  @@index([patientId, startTime], map: "idx_appointments_patient")
+  @@index([startTime], map: "idx_appointments_start")
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([cancelledById])
+  @@map("appointments")
+}
+
+// ─── დაზღვევა ───
+
+model InsuranceCompany {
+  id        Int                 @id @default(autoincrement())
+  name      String              @unique(map: "uq_insurance_companies_name") @db.VarChar(150)
+  isActive  Boolean             @default(true) @map("is_active")
+  contracts InsuranceContract[]
+  policies  PatientInsurance[]
+  invoices  Invoice[]
+
+  @@map("insurance_companies")
+}
+
+/// კომპანიის პირობა სერვისზე ან მთელ კატეგორიაზე (ზუსტად ერთი მათგანი). სერვისის პირობა უპირატესია კატეგორიისაზე.
+/// limitAmount — დაზღვევის მაქსიმალური წილი სერვისის ერთეულზე (null — ლიმიტის გარეშე).
+model InsuranceContract {
+  id              Int              @id @default(autoincrement())
+  companyId       Int              @map("company_id")
+  serviceId       Int?             @map("service_id")
+  categoryId      Int?             @map("category_id")
+  coveragePercent Decimal          @map("coverage_percent") @db.Decimal(5, 2)
+  limitAmount     Decimal?         @map("limit_amount") @db.Decimal(12, 2)
+  company         InsuranceCompany @relation(fields: [companyId], references: [id])
+  service         Service?         @relation(fields: [serviceId], references: [id])
+  category        ServiceCategory? @relation(fields: [categoryId], references: [id])
+
+  @@unique([companyId, serviceId], map: "uq_insurance_contracts_service")
+  @@unique([companyId, categoryId], map: "uq_insurance_contracts_category")
+  @@index([serviceId])
+  @@index([categoryId])
+  @@map("insurance_contracts")
+}
+
+/// პაციენტის პოლისი. აქტიურია, თუ is_active და დღევანდელი თარიღი valid_from..valid_to შუალედშია.
+model PatientInsurance {
+  id           Int              @id @default(autoincrement())
+  patientId    Int              @map("patient_id")
+  companyId    Int              @map("company_id")
+  policyNumber String           @map("policy_number") @db.VarChar(50)
+  validFrom    DateTime         @map("valid_from") @db.Date
+  validTo      DateTime         @map("valid_to") @db.Date
+  isActive     Boolean          @default(true) @map("is_active")
+  createdById  Int?             @map("created_by")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.DateTime(0)
+  patient      Patient          @relation(fields: [patientId], references: [id])
+  company      InsuranceCompany @relation(fields: [companyId], references: [id])
+  createdBy    User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  invoices     Invoice[]
+
+  @@index([patientId, isActive], map: "idx_patient_insurances_patient")
+  @@index([companyId])
+  @@index([createdById])
+  @@map("patient_insurances")
+}
+
+// ─── ინვოისები, გადახდები, სალარო ───
+
+/// თანმიმდევრული ნომრები წლის მიხედვით (INV-2026-000001, RCP-2026-000001). იზრდება ტრანზაქციაში, FOR UPDATE-ით.
+model NumberSequence {
+  name      String @db.VarChar(20)
+  year      Int    @db.SmallInt
+  lastValue Int    @map("last_value")
+
+  @@id([name, year])
+  @@map("number_sequences")
+}
+
+/// unpaid/partial/paid პაციენტის წილისა და გადახდების მიხედვით ითვლება და გადახდისას ახლდება (იმავე ტრანზაქციაში).
+enum InvoiceStatus {
+  unpaid
+  partial
+  paid
+  cancelled
+}
+
+/// ინვოისი: თანხები ინახება შექმნის მომენტის ფასებით და დაზღვევის პირობებით, შემდეგ აღარ იცვლება.
+/// გადახდილი თანხა და ვალი ცალკე ველში არ ინახება — ითვლება payments-იდან.
+model Invoice {
+  id                      Int               @id @default(autoincrement())
+  invoiceNumber           String            @unique(map: "uq_invoices_number") @map("invoice_number") @db.VarChar(20)
+  patientId               Int               @map("patient_id")
+  appointmentId           Int?              @map("appointment_id")
+  doctorId                Int?              @map("doctor_id")
+  doctorName              String?           @map("doctor_name") @db.VarChar(201)
+  serviceDate             DateTime          @map("service_date") @db.DateTime(0)
+  visitType               VisitType         @default(outpatient) @map("visit_type")
+  status                  InvoiceStatus     @default(unpaid)
+  totalAmount             Decimal           @map("total_amount") @db.Decimal(12, 2)
+  discountAmount          Decimal           @map("discount_amount") @db.Decimal(12, 2)
+  insuranceAmount         Decimal           @map("insurance_amount") @db.Decimal(12, 2)
+  patientAmount           Decimal           @map("patient_amount") @db.Decimal(12, 2)
+  patientInsuranceId      Int?              @map("patient_insurance_id")
+  insuranceCompanyId      Int?              @map("insurance_company_id")
+  policyNumber            String?           @map("policy_number") @db.VarChar(50)
+  insuranceDisabledReason String?           @map("insurance_disabled_reason") @db.VarChar(500)
+  comment                 String?           @db.Text
+  cancelReason            String?           @map("cancel_reason") @db.VarChar(500)
+  cancelledById           Int?              @map("cancelled_by")
+  cancelledAt             DateTime?         @map("cancelled_at") @db.DateTime(0)
+  createdById             Int?              @map("created_by")
+  createdAt               DateTime          @default(now()) @map("created_at") @db.DateTime(0)
+  /// ძველი visits-იდან გადმოტანილი (npm run db:setup) — განმეორებით გადატანისგან დაცვა
+  legacyVisitId           Int?              @unique(map: "uq_invoices_legacy_visit") @map("legacy_visit_id")
+  patient                 Patient           @relation(fields: [patientId], references: [id])
+  appointment             Appointment?      @relation(fields: [appointmentId], references: [id])
+  doctor                  User?             @relation("InvoiceDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
+  patientInsurance        PatientInsurance? @relation(fields: [patientInsuranceId], references: [id])
+  insuranceCompany        InsuranceCompany? @relation(fields: [insuranceCompanyId], references: [id])
+  createdBy               User?             @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelledBy             User?             @relation("InvoiceCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  items                   InvoiceItem[]
+  payments                Payment[]
+
+  @@index([patientId], map: "idx_invoices_patient")
+  @@index([createdAt], map: "idx_invoices_created_at")
+  @@index([status], map: "idx_invoices_status")
+  @@index([appointmentId])
+  @@index([insuranceCompanyId, createdAt], map: "idx_invoices_insurance")
+  @@index([doctorId])
+  @@index([patientInsuranceId])
+  @@index([createdById])
+  @@index([cancelledById])
+  @@index([cancelledAt], map: "idx_invoices_cancelled_at")
+  @@map("invoices")
+}
+
+/// ინვოისის ხაზი: სერვისის კოდი/დასახელება/ფასი და დაზღვევის წილი შექმნის მომენტით.
+model InvoiceItem {
+  id              Int      @id @default(autoincrement())
+  invoiceId       Int      @map("invoice_id")
+  serviceId       Int?     @map("service_id")
+  serviceCode     String?  @map("service_code") @db.VarChar(30)
+  serviceName     String   @map("service_name") @db.VarChar(255)
+  quantity        Int      @default(1) @db.SmallInt
+  unitPrice       Decimal  @map("unit_price") @db.Decimal(12, 2)
+  discountPercent Decimal  @map("discount_percent") @db.Decimal(5, 2)
+  discountAmount  Decimal  @map("discount_amount") @db.Decimal(12, 2)
+  totalAmount     Decimal  @map("total_amount") @db.Decimal(12, 2)
+  insuranceAmount Decimal  @map("insurance_amount") @db.Decimal(12, 2)
+  patientAmount   Decimal  @map("patient_amount") @db.Decimal(12, 2)
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id])
+  service         Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId], map: "idx_invoice_items_invoice")
+  @@index([serviceId], map: "idx_invoice_items_service")
+  @@map("invoice_items")
+}
+
+enum CashShiftStatus {
+  open
+  closed
+}
+
+/// სალაროს ცვლა. ერთ მომხმარებელს ერთი ღია ცვლა (UNIQUE გენერირებულ სვეტზე open_user_id — იხ. setup-db.ts).
+model CashShift {
+  id           Int             @id @default(autoincrement())
+  userId       Int             @map("user_id")
+  openedAt     DateTime        @default(now()) @map("opened_at") @db.DateTime(0)
+  openingCash  Decimal         @map("opening_cash") @db.Decimal(12, 2)
+  closedAt     DateTime?       @map("closed_at") @db.DateTime(0)
+  expectedCash Decimal?        @map("expected_cash") @db.Decimal(12, 2)
+  actualCash   Decimal?        @map("actual_cash") @db.Decimal(12, 2)
+  difference   Decimal?        @db.Decimal(12, 2)
+  closeNote    String?         @map("close_note") @db.VarChar(500)
+  status       CashShiftStatus @default(open)
+  user         User            @relation(fields: [userId], references: [id])
+  payments     Payment[]
+
+  @@index([userId, openedAt], map: "idx_cash_shifts_user")
+  @@index([status])
+  @@map("cash_shifts")
+}
+
+enum PaymentType {
+  payment
+  refund
+}
+
+/// გადახდის ფორმა: ნაღდი ან ბარათი
+enum PaymentMethod {
+  cash
+  card
+}
+
+/// გადახდა ან დაბრუნება (თანხა ყოველთვის დადებითია, type განსაზღვრავს მიმართულებას). არ იცვლება და არ იშლება.
+/// ბარათზე ინახება მხოლოდ ტრანზაქციის ნომერი ან ბოლო 4 ციფრი — არასოდეს სრული ნომერი.
+model Payment {
+  id              Int           @id @default(autoincrement())
+  receiptNumber   String        @unique(map: "uq_payments_receipt") @map("receipt_number") @db.VarChar(20)
+  invoiceId       Int           @map("invoice_id")
+  type            PaymentType   @default(payment)
+  method          PaymentMethod
+  amount          Decimal       @db.Decimal(12, 2)
+  receivedAmount  Decimal?      @map("received_amount") @db.Decimal(12, 2)
+  changeAmount    Decimal?      @map("change_amount") @db.Decimal(12, 2)
+  cardReference   String?       @map("card_reference") @db.VarChar(30)
+  reason          String?       @db.VarChar(500)
+  cashShiftId     Int?          @map("cash_shift_id")
+  createdById     Int?          @map("created_by")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(0)
+  legacyPaymentId Int?          @unique(map: "uq_payments_legacy") @map("legacy_payment_id")
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+  cashShift       CashShift?    @relation(fields: [cashShiftId], references: [id])
+  createdBy       User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  prints          ReceiptPrint[]
+
+  @@index([invoiceId], map: "idx_payments_invoice")
+  @@index([createdAt], map: "idx_payments_created_at")
+  @@index([cashShiftId], map: "idx_payments_cash_shift")
+  @@index([createdById])
+  @@map("payments")
+}
+
+enum ReceiptFormat {
+  thermal
+  a4
+}
+
+/// ქვითრის ბეჭდვა: პირველის შემდეგ ყველა „დუბლიკატია“.
+model ReceiptPrint {
+  id          Int           @id @default(autoincrement())
+  paymentId   Int           @map("payment_id")
+  format      ReceiptFormat
+  printedById Int?          @map("printed_by")
+  printedAt   DateTime      @default(now()) @map("printed_at") @db.DateTime(0)
+  payment     Payment       @relation(fields: [paymentId], references: [id])
+  printedBy   User?         @relation(fields: [printedById], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+  @@index([printedById])
+  @@map("receipt_prints")
+}
+
+// ─── ექიმი: სამედიცინო ჩანაწერი (EMR) ───
+
+/// ICD-10 კლასიფიკატორი (იმპორტი CSV-დან: npm run icd10:import). code — წერტილით: "I10", "E11.9".
+model Icd10Code {
+  code       String               @id @db.VarChar(10)
+  nameKa     String               @map("name_ka") @db.VarChar(500)
+  nameEn     String?              @map("name_en") @db.VarChar(500)
+  diagnoses  EncounterDiagnosis[]
+  conditions PatientCondition[]
+
+  @@index([nameKa(length: 100)], map: "idx_icd10_name_ka")
+  @@index([nameEn(length: 100)], map: "idx_icd10_name_en")
+  @@map("icd10_codes")
+}
+
+enum AllergySeverity {
+  mild
+  moderate
+  severe
+}
+
+/// ალერგია — ბარათის თავში წითლად ჩანს; მედიკამენტის დანიშვნისას მოწმდება. არ იშლება — ითიშება (is_active).
+model PatientAllergy {
+  id          Int             @id @default(autoincrement())
+  patientId   Int             @map("patient_id")
+  substance   String          @db.VarChar(200)
+  reaction    String?         @db.VarChar(500)
+  severity    AllergySeverity @default(moderate)
+  isActive    Boolean         @default(true) @map("is_active")
+  createdById Int?            @map("created_by")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.DateTime(0)
+  patient     Patient         @relation(fields: [patientId], references: [id])
+  createdBy   User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([patientId, isActive], map: "idx_patient_allergies_patient")
+  @@index([createdById])
+  @@map("patient_allergies")
+}
+
+/// ქრონიკული დაავადება (სურვილისამებრ ICD-10 კოდით).
+model PatientCondition {
+  id          Int        @id @default(autoincrement())
+  patientId   Int        @map("patient_id")
+  icd10Code   String?    @map("icd10_code") @db.VarChar(10)
+  name        String     @db.VarChar(500)
+  since       DateTime?  @db.Date
+  note        String?    @db.VarChar(500)
+  isActive    Boolean    @default(true) @map("is_active")
+  createdById Int?       @map("created_by")
+  createdAt   DateTime   @default(now()) @map("created_at") @db.DateTime(0)
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  icd10       Icd10Code? @relation(fields: [icd10Code], references: [code])
+  createdBy   User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([patientId, isActive], map: "idx_patient_conditions_patient")
+  @@index([icd10Code])
+  @@index([createdById])
+  @@map("patient_conditions")
+}
+
+/// მუდმივად მისაღები მედიკამენტი.
+model PatientMedication {
+  id          Int      @id @default(autoincrement())
+  patientId   Int      @map("patient_id")
+  drugName    String   @map("drug_name") @db.VarChar(200)
+  dose        String?  @db.VarChar(100)
+  frequency   String?  @db.VarChar(100)
+  note        String?  @db.VarChar(500)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([patientId, isActive], map: "idx_patient_medications_patient")
+  @@index([createdById])
+  @@map("patient_medications")
+}
+
+enum EncounterStatus {
+  draft
+  completed
+}
+
+/// ვიზიტის სამედიცინო ჩანაწერი (გასინჯვა), ერთი ჯავშანზე. draft — ავტოშენახვით ივსება; completed — ჩაკეტილია.
+/// version — ოპტიმისტური ჩაკეტვა: ორი ფანჯრიდან შენახვისას ძველი ვერსია ახალს არ გადაეწერება.
+/// BMI არ ინახება — წონიდან და სიმაღლიდან ითვლება.
+model Encounter {
+  id               Int                  @id @default(autoincrement())
+  appointmentId    Int                  @unique(map: "uq_encounters_appointment") @map("appointment_id")
+  patientId        Int                  @map("patient_id")
+  doctorId         Int                  @map("doctor_id")
+  status           EncounterStatus      @default(draft)
+  complaints       String?              @db.Text
+  anamnesisDisease String?              @map("anamnesis_disease") @db.Text
+  anamnesisLife    String?              @map("anamnesis_life") @db.Text
+  examination      String?              @db.Text
+  treatmentPlan    String?              @map("treatment_plan") @db.Text
+  recommendations  String?              @db.Text
+  bpSystolic       Int?                 @map("bp_systolic") @db.SmallInt
+  bpDiastolic      Int?                 @map("bp_diastolic") @db.SmallInt
+  pulse            Int?                 @db.SmallInt
+  temperature      Decimal?             @db.Decimal(4, 1)
+  spo2             Int?                 @db.SmallInt
+  respRate         Int?                 @map("resp_rate") @db.SmallInt
+  weightKg         Decimal?             @map("weight_kg") @db.Decimal(5, 1)
+  heightCm         Decimal?             @map("height_cm") @db.Decimal(5, 1)
+  version          Int                  @default(1)
+  startedAt        DateTime             @map("started_at") @db.DateTime(0)
+  updatedAt        DateTime             @map("updated_at") @db.DateTime(0)
+  completedAt      DateTime?            @map("completed_at") @db.DateTime(0)
+  appointment      Appointment          @relation(fields: [appointmentId], references: [id])
+  patient          Patient              @relation(fields: [patientId], references: [id])
+  doctor           User                 @relation("EncounterDoctor", fields: [doctorId], references: [id])
+  diagnoses        EncounterDiagnosis[]
+  prescriptions    Prescription[]
+  orders           MedicalOrder[]
+  documents        MedicalDocument[]
+
+  @@index([patientId, startedAt], map: "idx_encounters_patient")
+  @@index([doctorId, startedAt], map: "idx_encounters_doctor")
+  @@index([status])
+  @@map("encounters")
+}
+
+/// დიაგნოზი ICD-10-ით: ერთი ძირითადი (is_primary) და თანმხლებები.
+model EncounterDiagnosis {
+  id          Int       @id @default(autoincrement())
+  encounterId Int       @map("encounter_id")
+  icd10Code   String    @map("icd10_code") @db.VarChar(10)
+  isPrimary   Boolean   @default(false) @map("is_primary")
+  note        String?   @db.VarChar(500)
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  icd10       Icd10Code @relation(fields: [icd10Code], references: [code])
+
+  @@unique([encounterId, icd10Code], map: "uq_encounter_diagnoses")
+  @@index([icd10Code], map: "idx_encounter_diagnoses_code")
+  @@map("encounter_diagnoses")
+}
+
+enum TemplateField {
+  complaints
+  anamnesis_disease
+  anamnesis_life
+  examination
+  treatment_plan
+  recommendations
+}
+
+/// ექიმის შაბლონი (ხშირად გამოყენებადი ტექსტი) ფორმის კონკრეტული ველისთვის.
+model DoctorTemplate {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @map("user_id")
+  field     TemplateField
+  title     String        @db.VarChar(100)
+  content   String        @db.Text
+  createdAt DateTime      @default(now()) @map("created_at") @db.DateTime(0)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, field], map: "idx_doctor_templates_user")
+  @@map("doctor_templates")
+}
+
+/// რეცეპტი (მედიკამენტის დანიშნულება).
+model Prescription {
+  id          Int       @id @default(autoincrement())
+  encounterId Int       @map("encounter_id")
+  patientId   Int       @map("patient_id")
+  drugName    String    @map("drug_name") @db.VarChar(200)
+  dose        String    @db.VarChar(100)
+  form        String?   @db.VarChar(100)
+  frequency   String    @db.VarChar(100)
+  duration    String?   @db.VarChar(100)
+  note        String?   @db.VarChar(500)
+  createdById Int?      @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([encounterId])
+  @@index([patientId, createdAt], map: "idx_prescriptions_patient")
+  @@index([createdById])
+  @@map("prescriptions")
+}
+
+/// lab — ლაბორატორია, instrumental — ექო/რენტგენი და ა.შ. (ლაბორანტის გვერდი), procedure — ექთნის პროცედურა.
+enum OrderType {
+  lab
+  instrumental
+  procedure
+}
+
+/// lab/instrumental: ordered → sample_taken → ready; procedure: ordered → done. cancelled — ნებისმიერიდან.
+enum OrderStatus {
+  ordered
+  sample_taken
+  ready
+  done
+  cancelled
+}
+
+/// დანიშნულება (კვლევა ან პროცედურა) — არსებული სერვისიდან, რომ ფასი ფინანსებში გადავიდეს.
+/// შედეგი: result_text და/ან ფაილი (patient_documents).
+model MedicalOrder {
+  id               Int              @id @default(autoincrement())
+  encounterId      Int              @map("encounter_id")
+  patientId        Int              @map("patient_id")
+  type             OrderType
+  serviceId        Int              @map("service_id")
+  serviceName      String           @map("service_name") @db.VarChar(255)
+  status           OrderStatus      @default(ordered)
+  note             String?          @db.VarChar(500)
+  resultText       String?          @map("result_text") @db.Text
+  resultDocumentId Int?             @map("result_document_id")
+  createdById      Int?             @map("created_by")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.DateTime(0)
+  performedById    Int?             @map("performed_by")
+  performedAt      DateTime?        @map("performed_at") @db.DateTime(0)
+  updatedAt        DateTime         @map("updated_at") @db.DateTime(0)
+  encounter        Encounter        @relation(fields: [encounterId], references: [id])
+  patient          Patient          @relation(fields: [patientId], references: [id])
+  service          Service          @relation(fields: [serviceId], references: [id])
+  resultDocument   PatientDocument? @relation(fields: [resultDocumentId], references: [id])
+  createdBy        User?            @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  performedBy      User?            @relation("OrderPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+
+  @@index([type, status, createdAt], map: "idx_medical_orders_queue")
+  @@index([patientId, createdAt], map: "idx_medical_orders_patient")
+  @@index([encounterId])
+  @@index([serviceId])
+  @@index([resultDocumentId])
+  @@index([createdById])
+  @@index([performedById])
+  @@map("medical_orders")
+}
+
+enum MedicalDocumentType {
+  visit_summary
+  certificate_100
+  prescription
+  referral
+  sick_leave
+  consent
+}
+
+/// draft → signed (ჩაკეტილი) → superseded (ახალმა ვერსიამ ჩაანაცვლა). ცვლილება — მხოლოდ ახალი ვერსიით (previous_id).
+enum MedicalDocumentStatus {
+  draft
+  signed
+  superseded
+}
+
+/// სამედიცინო დოკუმენტი: content — ფორმის მონაცემები (JSON), PDF — patient_documents-ში (ხელმოწერისას), sha256 — მთლიანობა.
+model MedicalDocument {
+  id            Int                   @id @default(autoincrement())
+  patientId     Int                   @map("patient_id")
+  encounterId   Int?                  @map("encounter_id")
+  type          MedicalDocumentType
+  version       Int                   @default(1)
+  previousId    Int?                  @unique(map: "uq_medical_documents_previous") @map("previous_id")
+  status        MedicalDocumentStatus @default(draft)
+  title         String                @db.VarChar(255)
+  content       String                @db.Text
+  pdfDocumentId Int?                  @map("pdf_document_id")
+  sha256        String?               @db.Char(64)
+  createdById   Int?                  @map("created_by")
+  createdAt     DateTime              @default(now()) @map("created_at") @db.DateTime(0)
+  signedAt      DateTime?             @map("signed_at") @db.DateTime(0)
+  patient       Patient               @relation(fields: [patientId], references: [id])
+  encounter     Encounter?            @relation(fields: [encounterId], references: [id])
+  previous      MedicalDocument?      @relation("DocumentVersions", fields: [previousId], references: [id])
+  next          MedicalDocument?      @relation("DocumentVersions")
+  pdf           PatientDocument?      @relation(fields: [pdfDocumentId], references: [id])
+  createdBy     User?                 @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  signatures    DocumentSignature[]
+
+  @@index([patientId, createdAt], map: "idx_medical_documents_patient")
+  @@index([encounterId])
+  @@index([pdfDocumentId])
+  @@index([createdById])
+  @@map("medical_documents")
+}
+
+enum SignerRole {
+  doctor
+  patient
+}
+
+/// ხელმოწერა: სურათი (PNG) დისკზე, device — საიდან (canvas ან მოწყობილობის SDK-ის სახელი).
+model DocumentSignature {
+  id           Int             @id @default(autoincrement())
+  documentId   Int             @map("document_id")
+  signerRole   SignerRole      @map("signer_role")
+  signerName   String          @map("signer_name") @db.VarChar(201)
+  signerUserId Int?            @map("signer_user_id")
+  imagePath    String          @map("image_path") @db.VarChar(255)
+  device       String          @db.VarChar(50)
+  signedAt     DateTime        @map("signed_at") @db.DateTime(0)
+  document     MedicalDocument @relation(fields: [documentId], references: [id])
+  signerUser   User?           @relation(fields: [signerUserId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([signerUserId])
+  @@map("document_signatures")
+}
+
+/// შეტყობინება მომხმარებელს (მზა ლაბ. შედეგი, პაციენტი მოვიდა, პროცედურა შესრულდა). read_at NULL — წაუკითხავი.
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  type      String    @db.VarChar(30)
+  title     String    @db.VarChar(200)
+  body      String?   @db.VarChar(500)
+  link      String?   @db.VarChar(255)
+  readAt    DateTime? @map("read_at") @db.DateTime(0)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt], map: "idx_notifications_user")
+  @@map("notifications")
+}
+
+/// აუდიტი: ვინ, როდის, რომელი პაციენტის ჩანაწერი ნახა/შეცვალა/ხელი მოაწერა. მხოლოდ ემატება.
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String   @db.VarChar(30)
+  entity    String   @db.VarChar(30)
+  entityId  Int?     @map("entity_id")
+  patientId Int?     @map("patient_id")
+  details   String?  @db.VarChar(500)
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  patient   Patient? @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, createdAt], map: "idx_audit_log_patient")
+  @@index([userId, createdAt], map: "idx_audit_log_user")
+  @@index([createdAt], map: "idx_audit_log_created")
+  @@map("audit_log")
 }

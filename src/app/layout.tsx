@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans_Georgian } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 // georgian subset მოიცავს მთავრულსაც (U+1C90–1CBF) — საჭიროა `uppercase`-ისთვის
@@ -16,10 +17,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ka" className={`${notoSansGeorgian.variable} h-full antialiased`}>
+    // suppressHydrationWarning: THEME_SCRIPT კლასს `dark` სვამს React-ის ჩატვირთვამდე
+    <html lang="ka" className={`${notoSansGeorgian.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col">
         {children}
-        <Toaster theme="light" position="top-center" richColors />
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   );

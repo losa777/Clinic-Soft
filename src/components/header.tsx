@@ -2,13 +2,14 @@ import Link from "next/link";
 import { LogOut } from "lucide-react";
 import type { Session } from "next-auth";
 import { Logo } from "@/components/logo";
+import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth-actions";
 import { rolePath } from "@/lib/roles";
 
 export function Header({ user }: { user: Session["user"] }) {
   return (
-    <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur print:hidden">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href={rolePath(user.roleCode)} className="shrink-0">
           <Logo className="text-lg" />
@@ -21,6 +22,7 @@ export function Header({ user }: { user: Session["user"] }) {
             </p>
             <p className="truncate text-xs text-muted-foreground">{user.roleName}</p>
           </div>
+          <ThemeToggle />
           <form action={logout}>
             <Button type="submit" variant="outline" size="lg" aria-label="გამოსვლა">
               <LogOut />
