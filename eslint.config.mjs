@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // სკანერის აგენტის ინსტალატორის აწყობის შედეგი (npm run scanner:build)
+    "scanner-agent/dist/**",
   ]),
 ]);
 
