@@ -3,6 +3,7 @@ import { formatDate, formatTime, tbilisiParts } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
 import type { TemplateFieldCode } from "@/modules/emr/schema";
 import type { VitalKey } from "@/modules/emr/vitals";
+import { loadEncounterMeasurements } from "./measurements";
 
 const num = (v: { toNumber(): number } | number | null) => (v === null ? null : typeof v === "number" ? v : v.toNumber());
 
@@ -28,6 +29,7 @@ export async function loadEncounterForm(encounterId: number, viewerUserId: numbe
     weightKg: num(e.weightKg),
     heightCm: num(e.heightCm),
   };
+  const measurements = await loadEncounterMeasurements(prisma, encounterId);
   return {
     id: e.id,
     version: e.version,
@@ -45,7 +47,9 @@ export async function loadEncounterForm(encounterId: number, viewerUserId: numbe
       recommendations: e.recommendations ?? "",
     },
     vitals,
-    diagnoses: e.diagnoses.map((d) => ({ code: d.icd10Code, name: d.icd10.nameKa, primary: d.isPrimary })),
+    diagnoses: e.diagnoses.map((d) => ({ code: d.icd10Code, name: d.icd10.nameKa, primary: d.isPrimary, complication: d.isComplication })),
+    /** სპეციალობის მაჩვენებლები და მათი მნიშვნელობები; showCommonVitals — საერთო ვიტალური ჩანს თუ არა */
+    measurements,
   };
 }
 

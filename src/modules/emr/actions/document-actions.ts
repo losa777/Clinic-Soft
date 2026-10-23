@@ -3,17 +3,18 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { DEVICE_ID_PATTERN } from "@/components/signature/devices";
-import type { Prisma } from "@/generated/prisma/client";
 import { type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
 import { formatDate, formatTime, tbilisiParts } from "@/lib/appointment-slots";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { detectMimeType, readDocument, removeDocuments, storeDocument } from "@/lib/document-storage";
-import { renderDocumentPdf } from "@/modules/emr/documents/pdf";
-import { DOCUMENT_TEMPLATES, isDocumentType, validateDocumentValues } from "@/modules/emr/documents/templates";
+import { renderDocumentPdf, signerName } from "@/modules/emr/documents/pdf";
+import { DOCUMENT_TEMPLATES, isDocumentType, SIGNER_ROLE_LABELS, validateDocumentValues } from "@/modules/emr/documents/templates";
 import { audit } from "@/modules/emr/server/audit";
 import { loadPdfInput, loadPrefillContext, serializeContent } from "@/modules/emr/server/documents";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
+import { lockOwnDraftDocument as lockOwnDraft } from "@/modules/emr/server/guards";
+import { NO_YEAR, nextSequenceValue } from "@/modules/finance/server/numbering";
 
 /**
  * სამედიცინო დოკუმენტები: დრაფტი → ხელმოწერა (PDF ინახება, sha256, ჩაიკეტება) → ახალი ვერსია (ძველი „ჩანაცვლებულია“).
@@ -22,7 +23,7 @@ import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
  */
 
 const idSchema = z.number().int().positive();
-const valuesSchema = z.record(z.string(), z.string().max(10_000));
+const valuesSchema = z.record(z.string(), z.string().max(30_000));
 
 const createSchema = z.object({ encounterId: idSchema, type: z.string().refine(isDocumentType, "დოკუმენტის ტიპი არასწორია") });
 
@@ -66,19 +67,6 @@ export async function createDocumentAction(input: { encounterId: number; type: s
   }
 }
 
-/** დრაფტის ჩაკეტვა და შემოწმება: არსებობს, ავტორი — მე, სტატუსი — დრაფტი. */
-async function lockOwnDraft(tx: Prisma.TransactionClient, documentId: number, userId: number) {
-  await tx.$queryRaw`SELECT id FROM medical_documents WHERE id = ${documentId} FOR UPDATE`;
-  const d = await tx.medicalDocument.findUnique({
-    where: { id: documentId },
-    select: { id: true, type: true, status: true, createdById: true, patientId: true, previousId: true, version: true, title: true },
-  });
-  if (!d || !isDocumentType(d.type)) throw new EmrError("დოკუმენტი ვერ მოიძებნა");
-  if (d.createdById !== userId) throw new EmrError("დოკუმენტს ასწორებს მხოლოდ მისი ავტორი");
-  if (d.status !== "draft") throw new EmrError("დოკუმენტი ხელმოწერილია და ჩაკეტილია — შექმენით ახალი ვერსია");
-  return { ...d, type: d.type };
-}
-
 /** დრაფტის შენახვა (სავალდებულო ველები ჯერ არ მოწმდება). */
 export async function saveDocumentAction(input: { documentId: number; values: Record<string, string> }): Promise<ActionResult> {
   const me = await requirePermission("emr.edit");
@@ -115,18 +103,26 @@ export async function deleteDraftAction(documentId: number): Promise<ActionResul
   }
 }
 
+const roleSchema = z.enum(["doctor", "patient", "head"]);
 const signSchema = z.object({
   documentId: idSchema,
   values: valuesSchema,
+  /** electronic — პადით (PNG); manual — ხელით, დაბეჭდვის შემდეგ (PDF-ში ცარიელი ადგილი) */
   signatures: z
     .array(
-      z.object({
-        role: z.enum(["doctor", "patient"]),
-        png: z.string().startsWith("data:image/png;base64,", "ხელმოწერის ფორმატი არასწორია").max(800_000, "ხელმოწერის ფაილი ძალიან დიდია"),
-        device: z.string().regex(DEVICE_ID_PATTERN, "მოწყობილობა არასწორია"),
-      }),
+      z.discriminatedUnion("mode", [
+        z.object({
+          role: roleSchema,
+          mode: z.literal("electronic"),
+          png: z.string().startsWith("data:image/png;base64,", "ხელმოწერის ფორმატი არასწორია").max(800_000, "ხელმოწერის ფაილი ძალიან დიდია"),
+          device: z.string().regex(DEVICE_ID_PATTERN, "მოწყობილობა არასწორია"),
+        }),
+        z.object({ role: roleSchema, mode: z.literal("manual") }),
+      ]),
     )
-    .max(2),
+    .max(3),
+  /** ბეჭედი (შაბლონს თუ აქვს და ატვირთულია) */
+  withStamp: z.boolean(),
 });
 export type SignInput = z.input<typeof signSchema>;
 
@@ -143,10 +139,12 @@ function decodeSignature(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+const MODE_LABEL = { electronic: "ელექტრონულად", manual: "ხელით" } as const;
+
 /**
- * ხელმოწერა: ველები მოწმდება (სავალდებულოებიც), იქმნება PDF ხელმოწერებით, ინახება პაციენტის ფაილებში,
- * დოკუმენტი იკეტება (sha256), წინა ვერსია — „ჩანაცვლებულია“. ყველაფერი ერთ ტრანზაქციაში;
- * ჩავარდნისას დისკზე ჩაწერილი ფაილები იშლება.
+ * ხელმოწერა: ველები მოწმდება (სავალდებულოებიც), ნომერი ენიჭება (ფორმა 100), იქმნება PDF ხელმოწერებით (ელექტრონული —
+ * სურათით, ხელით — ცარიელი ადგილით) და ბეჭდით, ინახება პაციენტის ფაილებში, დოკუმენტი იკეტება (sha256),
+ * წინა ვერსია — „ჩანაცვლებულია“. ყველაფერი ერთ ტრანზაქციაში; ჩავარდნისას დისკზე ჩაწერილი ფაილები იშლება.
  */
 export async function signDocumentAction(input: SignInput): Promise<ActionResult> {
   const me = await requirePermission("emr.edit", "documents.sign");
@@ -156,7 +154,7 @@ export async function signDocumentAction(input: SignInput): Promise<ActionResult
   const stored: string[] = [];
 
   try {
-    const signatures = parsed.data.signatures.map((s) => ({ ...s, bytes: decodeSignature(s.png) }));
+    const signatures = parsed.data.signatures.map((s) => ({ ...s, bytes: s.mode === "electronic" ? decodeSignature(s.png) : null }));
     if (new Set(signatures.map((s) => s.role)).size !== signatures.length) throw new EmrError("ხელმოწერა ორჯერაა");
 
     const title = await prisma.$transaction(async (tx) => {
@@ -166,36 +164,44 @@ export async function signDocumentAction(input: SignInput): Promise<ActionResult
       if (!checked.ok) throw new EmrError("შეავსეთ სავალდებულო ველები", checked.errors);
       for (const s of template.signers) {
         if (s.required && !signatures.some((x) => x.role === s.role)) {
-          throw new EmrError(s.role === "doctor" ? "საჭიროა ექიმის ხელმოწერა" : "საჭიროა პაციენტის ხელმოწერა");
+          throw new EmrError(`საჭიროა ხელმოწერა: ${SIGNER_ROLE_LABELS[s.role]} (ელექტრონულად ან დაბეჭდვის შემდეგ)`);
         }
       }
       const allowed = new Set(template.signers.map((s) => s.role));
       if (signatures.some((s) => !allowed.has(s.role))) throw new EmrError("ამ დოკუმენტს ეს ხელმომწერი არ აქვს");
 
       const now = new Date();
-      await tx.medicalDocument.update({ where: { id: d.id }, data: { content: serializeContent(checked.values), signedAt: now } });
-      const base = await loadPdfInput(tx, d.id);
+      // ცნობის ნომერი (ფორმა 100) — თანმიმდევრული; ჩავარდნილი ტრანზაქცია ნომერს არ ხარჯავს
+      const docNumber = template.numbered ? String(await nextSequenceValue(tx, "F100", NO_YEAR)) : null;
+      await tx.medicalDocument.update({ where: { id: d.id }, data: { content: serializeContent(checked.values), signedAt: now, docNumber } });
+      const base = await loadPdfInput(tx, d.id, { withStamp: parsed.data.withStamp });
       if (!base) throw new EmrError("დოკუმენტი ვერ მოიძებნა");
       const signedAt = `${formatDate(tbilisiParts(now).date)} ${formatTime(now)}`;
-      const signerName = (role: "doctor" | "patient") => (role === "doctor" ? base.doctor.name : base.patient.name);
 
       const pdf = await renderDocumentPdf({
         ...base,
         draft: false,
-        signatures: signatures.map((s) => ({ role: s.role, name: signerName(s.role), png: s.bytes, signedAt })),
+        signatures: signatures.map((s) => ({ role: s.role, name: signerName(base, s.role), png: s.bytes, signedAt })),
       });
       const sha256 = createHash("sha256").update(pdf).digest("hex");
 
-      for (const s of signatures) stored.push(await storeDocument(s.bytes, "image/png"));
+      const imagePaths = new Map<string, string>();
+      for (const s of signatures) {
+        if (!s.bytes) continue;
+        const path = await storeDocument(s.bytes, "image/png");
+        stored.push(path);
+        imagePaths.set(s.role, path);
+      }
       const pdfPath = await storeDocument(pdf, "application/pdf");
       stored.push(pdfPath);
 
+      const number = docNumber ?? String(d.id);
       const file = await tx.patientDocument.create({
         data: {
           patientId: d.patientId,
           docType: "medical",
-          title: `${template.title} N ${d.id}${d.version > 1 ? ` (ვერსია ${d.version})` : ""}`,
-          originalName: `document-${d.id}-v${d.version}.pdf`,
+          title: `${template.title} N ${number}${d.version > 1 ? ` (ვერსია ${d.version})` : ""}`,
+          originalName: `document-${number}-v${d.version}.pdf`,
           storagePath: pdfPath,
           mimeType: "application/pdf",
           sizeBytes: pdf.byteLength,
@@ -210,13 +216,13 @@ export async function signDocumentAction(input: SignInput): Promise<ActionResult
       });
       if (!count) throw new EmrError("დოკუმენტი ამასობაში შეიცვალა — განაახლეთ გვერდი");
       await tx.documentSignature.createMany({
-        data: signatures.map((s, i) => ({
+        data: signatures.map((s) => ({
           documentId: d.id,
           signerRole: s.role,
-          signerName: signerName(s.role),
+          signerName: signerName(base, s.role) || "—",
           signerUserId: s.role === "doctor" ? userId : null,
-          imagePath: stored[i],
-          device: s.device,
+          imagePath: imagePaths.get(s.role) ?? null,
+          device: s.mode === "electronic" ? s.device : "manual",
           signedAt: now,
         })),
       });
@@ -230,11 +236,20 @@ export async function signDocumentAction(input: SignInput): Promise<ActionResult
           entity: "document",
           entityId: d.id,
           patientId: d.patientId,
-          details: `${template.title}, ვერსია ${d.version}, ხელმომწერები: ${signatures.map((s) => s.role).join("+")}, sha256 ${sha256.slice(0, 16)}…`,
+          details: [
+            template.title,
+            docNumber && `N ${docNumber}`,
+            `ვერსია ${d.version}`,
+            `ხელმომწერები: ${signatures.map((s) => `${s.role} (${MODE_LABEL[s.mode]})`).join(", ")}`,
+            base.stamp && "ბეჭდით",
+            `sha256 ${sha256.slice(0, 16)}…`,
+          ]
+            .filter(Boolean)
+            .join("; "),
         },
         tx,
       );
-      return template.title;
+      return docNumber ? `${template.title} N ${docNumber}` : template.title;
     }, EMR_TX);
     return success(`ხელმოწერილია: ${title}`);
   } catch (error) {

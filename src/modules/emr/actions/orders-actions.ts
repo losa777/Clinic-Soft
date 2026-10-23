@@ -1,7 +1,6 @@
 "use server";
 
 import { z } from "zod";
-import type { Prisma } from "@/generated/prisma/client";
 import { type ActionFailure, type ActionResult, failure, invalid, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
@@ -9,6 +8,7 @@ import { allergyMatches } from "@/modules/emr/allergy";
 import { type OrderInput, orderSchema, type PrescriptionInput, prescriptionSchema } from "@/modules/emr/schema";
 import { audit } from "@/modules/emr/server/audit";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
+import { ownDraftEncounter as ownDraft } from "@/modules/emr/server/guards";
 
 /**
  * ექიმის დანიშნულებები: რეცეპტი, კვლევები, პროცედურები — მხოლოდ საკუთარ, დაუსრულებელ ვიზიტზე (emr.edit).
@@ -16,14 +16,6 @@ import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
  */
 
 const idSchema = z.number().int().positive();
-
-async function ownDraft(tx: Prisma.TransactionClient, encounterId: number, userId: number) {
-  const e = await tx.encounter.findUnique({ where: { id: encounterId }, select: { doctorId: true, status: true, patientId: true } });
-  if (!e) throw new EmrError("ვიზიტის ჩანაწერი ვერ მოიძებნა");
-  if (e.doctorId !== userId) throw new EmrError("ეს ვიზიტი სხვა ექიმისაა — მხოლოდ სანახავად");
-  if (e.status !== "draft") throw new EmrError("ვიზიტი დასრულებულია — დანიშნულება აღარ ემატება");
-  return e;
-}
 
 export type PrescriptionResult = { ok: true; message: string } | (ActionFailure & { allergyWarning?: string[] });
 

@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, FilePlus2, FileSignature, FileText, GitBranch, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { Eye, FilePlus2, FileSignature, FileText, GitBranch, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormField } from "@/components/form-field";
+import { SegmentedChoice } from "@/components/segmented-choice";
 import type { SignatureResult } from "@/components/signature/devices";
 import { SignatureCapture } from "@/components/signature/signature-pad";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ import {
   deleteDraftAction,
   newVersionAction,
   saveDocumentAction,
+  type SignInput,
   signDocumentAction,
   verifyDocumentAction,
 } from "@/modules/emr/actions/document-actions";
@@ -30,6 +32,9 @@ import {
   DOCUMENT_TEMPLATES,
   DOCUMENT_TYPES,
   type DocumentTypeCode,
+  MEDICATION_COLUMNS,
+  type MedicationRow,
+  parseMedications,
   SIGNER_ROLE_LABELS,
   type SignerRoleCode,
 } from "@/modules/emr/documents/templates";
@@ -49,12 +54,15 @@ export function MedicalDocuments({
   userId,
   canEdit,
   canSign,
+  stampAvailable,
 }: {
   docs: MedicalDocumentRow[];
   encounterId: number | null;
   userId: number;
   canEdit: boolean;
   canSign: boolean;
+  /** კლინიკის ბეჭედი ატვირთულია („ადმინი → რეკვიზიტები“) */
+  stampAvailable: boolean;
 }) {
   const router = useRouter();
   const [type, setType] = useState<DocumentTypeCode>("visit_summary");
@@ -113,7 +121,7 @@ export function MedicalDocuments({
                   <div className="flex flex-wrap items-center gap-2">
                     <FileText className="size-4 text-muted-foreground" />
                     <b>{d.title}</b>
-                    <span className="text-muted-foreground">N {d.id}</span>
+                    <span className="text-muted-foreground">N {d.docNumber ?? d.id}</span>
                     {d.version > 1 && <Badge variant="outline">ვერსია {d.version}</Badge>}
                     <Badge variant={d.status === "signed" ? "default" : d.status === "draft" ? "secondary" : "outline"}>
                       {DOCUMENT_STATUS_LABELS[d.status]}
@@ -157,11 +165,13 @@ export function MedicalDocuments({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {d.createdBy ?? "—"} · შეიქმნა {d.createdAt}
-                    {d.signatures.map((s) => ` · ${SIGNER_ROLE_LABELS[s.role as SignerRoleCode]}: ${s.name}, ${s.signedAt}`).join("")}
+                    {d.signatures
+                      .map((s) => ` · ${SIGNER_ROLE_LABELS[s.role as SignerRoleCode]}: ${s.name}${s.device === "manual" ? " (ხელით, დაბეჭდილზე)" : `, ${s.signedAt}`}`)
+                      .join("")}
                     {d.next && ` · ჩანაცვლებულია: ვერსია ${d.next.version} (N ${d.next.id})`}
                   </p>
                   {d.status === "draft" && own && editing === d.id && d.values && (
-                    <DocumentEditor key={d.id} doc={d} values={d.values} canSign={canSign} onClose={() => setEditing(null)} />
+                    <DocumentEditor key={d.id} doc={d} values={d.values} canSign={canSign} stampAvailable={stampAvailable} onClose={() => setEditing(null)} />
                   )}
                 </li>
               );
@@ -199,11 +209,13 @@ function DocumentEditor({
   doc,
   values: initial,
   canSign,
+  stampAvailable,
   onClose,
 }: {
   doc: MedicalDocumentRow;
   values: Record<string, string>;
   canSign: boolean;
+  stampAvailable: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -253,9 +265,15 @@ function DocumentEditor({
             onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValues((v) => ({ ...v, [f.key]: e.target.value })),
           };
           return (
-            <div key={f.key} className={cn(f.kind === "textarea" && "md:col-span-2")}>
+            <div key={f.key} className={cn((f.kind === "textarea" || f.kind === "medications") && "md:col-span-2")}>
               <FormField id={id} label={f.required ? `${f.label} *` : f.label} error={errors[f.key]}>
-                {f.kind === "textarea" ? <Textarea {...props} rows={3} /> : <Input {...props} type={f.kind === "date" ? "date" : "text"} className="h-9" />}
+                {f.kind === "medications" ? (
+                  <MedicationsEditor id={id} value={values[f.key] ?? "[]"} onChange={(v) => setValues((x) => ({ ...x, [f.key]: v }))} />
+                ) : f.kind === "textarea" ? (
+                  <Textarea {...props} rows={3} />
+                ) : (
+                  <Input {...props} type={f.kind === "date" ? "date" : "text"} className="h-9" />
+                )}
               </FormField>
             </div>
           );
@@ -295,6 +313,7 @@ function DocumentEditor({
         <SignDialog
           doc={doc}
           values={values}
+          stampAvailable={stampAvailable}
           onClose={() => setSigning(false)}
           onFieldErrors={(e) => {
             setErrors(e);
@@ -307,25 +326,44 @@ function DocumentEditor({
   );
 }
 
-/** ხელმოწერის ფანჯარა: შაბლონის ხელმომწერები (ექიმი; საჭიროებისას — პაციენტი). ხელმოწერის შემდეგ დოკუმენტი იკეტება. */
+type SignMode = "electronic" | "manual";
+
+const SIGN_MODES: { value: SignMode; label: string }[] = [
+  { value: "electronic", label: "ელექტრონულად" },
+  { value: "manual", label: "დაბეჭდვის შემდეგ" },
+];
+
+/**
+ * ხელმოწერის ფანჯარა: შაბლონის ხელმომწერები (ექიმი, ხელმძღვანელი, პაციენტი) — თითოეულზე არჩევანი: ელექტრონულად (პადით)
+ * ან დაბეჭდვის შემდეგ (PDF-ში ცარიელი ადგილი ხელით მოსაწერად). ბეჭედი — თუ შაბლონს აქვს და ატვირთულია.
+ * ხელმოწერის შემდეგ დოკუმენტი იკეტება.
+ */
 function SignDialog({
   doc,
   values,
+  stampAvailable,
   onClose,
   onFieldErrors,
   onSigned,
 }: {
   doc: MedicalDocumentRow;
   values: Record<string, string>;
+  stampAvailable: boolean;
   onClose: () => void;
   onFieldErrors: (errors: Record<string, string>) => void;
   onSigned: () => void;
 }) {
   const router = useRouter();
-  const signers = DOCUMENT_TEMPLATES[doc.type].signers;
+  const template = DOCUMENT_TEMPLATES[doc.type];
+  const signers = template.signers;
+  // ხელმძღვანელი, როგორც წესი, ადგილზე არ არის — ნაგულისხმევად ხელით (დაბეჭდილზე)
+  const [modes, setModes] = useState<Record<string, SignMode>>(() =>
+    Object.fromEntries(signers.map((s) => [s.role, s.role === "head" ? "manual" : "electronic"])),
+  );
   const [captured, setCaptured] = useState<Partial<Record<SignerRoleCode, SignatureResult | null>>>({});
+  const [withStamp, setWithStamp] = useState(Boolean(template.stamp && stampAvailable));
   const [pending, startTransition] = useTransition();
-  const missing = signers.filter((s) => s.required && !captured[s.role]);
+  const missing = signers.filter((s) => s.required && modes[s.role] === "electronic" && !captured[s.role]);
 
   function sign() {
     startTransition(async () => {
@@ -333,9 +371,11 @@ function SignDialog({
         const res = await signDocumentAction({
           documentId: doc.id,
           values,
-          signatures: signers.flatMap((s) => {
+          withStamp,
+          signatures: signers.flatMap((s): SignInput["signatures"] => {
+            if (modes[s.role] === "manual") return [{ role: s.role, mode: "manual" }];
             const c = captured[s.role];
-            return c ? [{ role: s.role, png: c.png, device: c.device }] : [];
+            return c ? [{ role: s.role, mode: "electronic", png: c.png, device: c.device }] : [];
           }),
         });
         if (!res.ok) {
@@ -354,25 +394,48 @@ function SignDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>ხელმოწერა: {doc.title}</DialogTitle>
           <DialogDescription>ხელმოწერის შემდეგ დოკუმენტი ჩაიკეტება და PDF შეინახება. შესწორება — მხოლოდ ახალი ვერსიით.</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           {signers.map((s) => (
-            <section key={s.role} className="flex flex-col gap-1.5">
-              <h3 className="text-sm font-medium">
-                {SIGNER_ROLE_LABELS[s.role]}
-                {s.required && " *"}
-              </h3>
-              <SignatureCapture
-                label={SIGNER_ROLE_LABELS[s.role]}
-                disabled={pending}
-                onChange={(r) => setCaptured((c) => ({ ...c, [s.role]: r }))}
-              />
+            <section key={s.role} className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">
+                  {SIGNER_ROLE_LABELS[s.role]}
+                  {s.required && " *"}
+                </h3>
+                <div className="w-64">
+                  <SegmentedChoice
+                    id={`sign-mode-${s.role}`}
+                    items={SIGN_MODES}
+                    value={modes[s.role]}
+                    onChange={(m) => setModes((x) => ({ ...x, [s.role]: m }))}
+                  />
+                </div>
+              </div>
+              {modes[s.role] === "electronic" ? (
+                <SignatureCapture
+                  label={SIGNER_ROLE_LABELS[s.role]}
+                  disabled={pending}
+                  onChange={(r) => setCaptured((c) => ({ ...c, [s.role]: r }))}
+                />
+              ) : (
+                <p className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                  PDF-ში დარჩება ცარიელი ადგილი — ხელი მოეწერება დაბეჭდილ ფურცელზე.
+                </p>
+              )}
             </section>
           ))}
+          {template.stamp && (
+            <label className={cn("flex items-center gap-2 text-sm", !stampAvailable && "text-muted-foreground")}>
+              <input type="checkbox" checked={withStamp} disabled={!stampAvailable || pending} onChange={(e) => setWithStamp(e.target.checked)} />
+              ბეჭედი
+              {!stampAvailable && <span className="text-xs">(ატვირთული არ არის — „ადმინი → რეკვიზიტები“)</span>}
+            </label>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={pending}>
@@ -385,5 +448,58 @@ function SignDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** მედიკამენტების ცხრილი (ფორმა 100, პ. 17): სტრიქონის დამატება/წაშლა; მნიშვნელობა — JSON. */
+function MedicationsEditor({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+  const rows = parseMedications(value);
+  const update = (next: MedicationRow[]) => onChange(JSON.stringify(next));
+  const empty = Object.fromEntries(MEDICATION_COLUMNS.map((c) => [c.key, ""])) as MedicationRow;
+  return (
+    <div id={id} className="flex flex-col gap-2">
+      {rows.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-muted/50 text-xs text-muted-foreground">
+              <tr>
+                {MEDICATION_COLUMNS.map((c) => (
+                  <th key={c.key} className="px-2 py-1.5 text-left font-medium">
+                    {c.label}
+                  </th>
+                ))}
+                <th className="w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t align-top">
+                  {MEDICATION_COLUMNS.map((c) => (
+                    <td key={c.key} className="p-1">
+                      <Input
+                        value={r[c.key]}
+                        maxLength={c.max}
+                        aria-label={`${c.label} (${i + 1})`}
+                        onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, [c.key]: e.target.value } : x)))}
+                        className={cn("h-8", (c.key === "drug" || c.key === "note") && "min-w-40")}
+                      />
+                    </td>
+                  ))}
+                  <td className="p-1">
+                    <Button type="button" size="icon-sm" variant="ghost" aria-label="სტრიქონის წაშლა" onClick={() => update(rows.filter((_, j) => j !== i))}>
+                      <Trash2 />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => update([...rows, empty])}>
+        <Plus />
+        მედიკამენტის დამატება
+      </Button>
+    </div>
   );
 }

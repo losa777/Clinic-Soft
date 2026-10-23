@@ -1,6 +1,8 @@
 import "server-only";
 import { formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
+import { formatCardNumber } from "./card";
+import { formatMeasurementsOf } from "./measurements";
 import { documentTypeLabel, GENDERS } from "@/lib/patient-schema";
 
 /**
@@ -12,7 +14,7 @@ const dateTime = (d: Date) => `${formatDate(tbilisiParts(d).date)} ${formatTime(
 const day = (d: Date) => formatDate(d.toISOString().slice(0, 10));
 const fullName = (u: { firstName: string; lastName: string } | null | undefined) => (u ? `${u.firstName} ${u.lastName}` : null);
 
-function ageOf(birthDate: Date): number {
+export function ageOf(birthDate: Date): number {
   const [y, m, d] = tbilisiToday().split("-").map(Number);
   const b = birthDate;
   let age = y - b.getUTCFullYear();
@@ -42,6 +44,7 @@ export async function loadPatientCard(patientId: number) {
     phone: p.phone,
     address: p.actualAddress ?? p.legalAddress,
     bloodGroup: p.bloodGroup,
+    cardNumber: formatCardNumber(p),
     allergies: p.allergies.map((a) => ({ id: a.id, substance: a.substance, reaction: a.reaction, severity: a.severity })),
     conditions: p.conditions.map((c) => ({
       id: c.id,
@@ -72,6 +75,7 @@ export async function loadEncounterHistory(patientId: number, page: number, view
     skip: (current - 1) * HISTORY_PAGE_SIZE,
     take: HISTORY_PAGE_SIZE,
   });
+  const measurements = await formatMeasurementsOf(prisma, encounters.map((e) => e.id));
   return {
     total,
     page: current,
@@ -84,11 +88,12 @@ export async function loadEncounterHistory(patientId: number, page: number, view
       doctor: fullName(e.doctor)!,
       specialty: e.doctor.doctorProfile?.specialty.name ?? null,
       own: e.doctorId === viewerUserId,
-      diagnoses: e.diagnoses.map((d) => ({ code: d.icd10Code, name: d.icd10.nameKa, primary: d.isPrimary })),
+      diagnoses: e.diagnoses.map((d) => ({ code: d.icd10Code, name: d.icd10.nameKa, primary: d.isPrimary, complication: d.isComplication })),
       complaints: e.complaints,
       examination: e.examination,
       treatmentPlan: e.treatmentPlan,
       recommendations: e.recommendations,
+      measurements: measurements.get(e.id) ?? [],
     })),
   };
 }

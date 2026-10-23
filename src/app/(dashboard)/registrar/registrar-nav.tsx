@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, CalendarPlus, FileText, HandCoins, ListChecks, Search, UserPlus, Wallet } from "lucide-react";
 import { APPOINTMENT_ROUTES } from "@/lib/appointment-routes";
+import { useActiveTabIntoView } from "@/components/use-active-tab";
 import { cn } from "@/lib/utils";
 import { FINANCE_ROUTES } from "@/modules/finance/routes";
 
@@ -22,9 +23,10 @@ const LINKS = [
 
 export function RegistrarNav() {
   const pathname = usePathname();
+  const navRef = useActiveTabIntoView<HTMLElement>(pathname);
 
   return (
-    <nav className="-mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0 print:hidden">
+    <nav ref={navRef} className="tab-scroll -mx-4 border-b px-4 sm:mx-0 sm:px-0 print:hidden">
       <ul className="flex gap-1">
         {LINKS.map(({ href, label, icon: Icon }) => {
           // პაციენტის გვერდი (/registrar/patients/…) ძებნის ჩანართს ეკუთვნის

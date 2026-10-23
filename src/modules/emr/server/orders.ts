@@ -7,17 +7,6 @@ import { loadSettings } from "@/modules/finance/server/receipts";
 const dateTime = (d: Date) => `${formatDate(tbilisiParts(d).date)} ${formatTime(d)}`;
 const fullName = (u: { firstName: string; lastName: string } | null | undefined) => (u ? `${u.firstName} ${u.lastName}` : null);
 
-/** შეტყობინება მომხმარებელს (ექიმის ზარი — ეტაპი 7). ტრანზაქციაში გადაეცით tx. */
-export async function notify(
-  db: Prisma.TransactionClient,
-  n: { userId: number | null; type: string; title: string; body?: string | null; link?: string | null },
-) {
-  if (!n.userId) return;
-  await db.notification.create({
-    data: { userId: n.userId, type: n.type, title: n.title.slice(0, 200), body: n.body?.slice(0, 500) ?? null, link: n.link ?? null, createdAt: new Date() },
-  });
-}
-
 export type OrderOption = { id: number; label: string; category: string };
 
 /** დასანიშნი სერვისები ტიპის მიხედვით: აქტიური სერვისები, რომელთა კატეგორიას დანიშნულების ტიპი აქვს. */
@@ -55,6 +44,8 @@ export async function loadEncounterOrders(encounterId: number) {
       frequency: p.frequency,
       duration: p.duration,
       note: p.note,
+      quantity: p.quantity,
+      rxNumber: p.rxNumber,
     })),
     orders: orders.map((o) => ({
       id: o.id,
@@ -168,6 +159,8 @@ export async function loadPrescriptionPrint(encounterId: number) {
       frequency: p.frequency,
       duration: p.duration,
       note: p.note,
+      quantity: p.quantity,
+      rxNumber: p.rxNumber,
     })),
   };
 }

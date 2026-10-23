@@ -128,6 +128,9 @@ model Patient {
   lastNameEn    String         @map("last_name_en") @db.VarChar(100)
   birthDate     DateTime       @map("birth_date") @db.Date
   gender        Gender
+  /// სამედიცინო ბარათის ნომერი წლის მიხედვით (6914/2026) — ენიჭება მიღების დაწყებისას
+  cardNumber    Int?           @map("card_number")
+  cardYear      Int?           @map("card_year") @db.SmallInt
   maritalStatus MaritalStatus? @map("marital_status")
   phone         String?        @db.VarChar(30)
   /// სისხლის ჯგუფი: O+ O- A+ A- B+ B- AB+ AB- (ავსებს ექიმი)
@@ -170,6 +173,7 @@ model Patient {
   @@index([createdById])
   @@index([updatedById])
   @@map("patients")
+  encounterMeasurements EncounterMeasurement[]
 }
 
 /// სერვისების კატეგორია (კონსულტაცია, ლაბორატორია, დიაგნოსტიკა...).
@@ -254,7 +258,11 @@ model PatientDocument {
 model Specialty {
   id      Int      @id @default(autoincrement())
   name    String   @unique(map: "uq_specialties_name") @db.VarChar(100)
+  /// ვიზიტის ფორმაში საერთო ვიტალური (წნევა, პულსი...) ჩანს თუ არა
+  showCommonVitals Boolean @default(true) @map("show_common_vitals")
   doctors Doctor[]
+  measurements SpecialtyMeasurement[]
+  encounters   Encounter[]
 
   @@map("specialties")
 }
@@ -672,6 +680,8 @@ model Encounter {
   appointmentId    Int                  @unique(map: "uq_encounters_appointment") @map("appointment_id")
   patientId        Int                  @map("patient_id")
   doctorId         Int                  @map("doctor_id")
+  /// ექიმის სპეციალობა მიღების დაწყებისას — რომელი მაჩვენებლები ჩანს ფორმაში
+  specialtyId      Int?                 @map("specialty_id")
   status           EncounterStatus      @default(draft)
   complaints       String?              @db.Text
   anamnesisDisease String?              @map("anamnesis_disease") @db.Text
@@ -694,6 +704,8 @@ model Encounter {
   appointment      Appointment          @relation(fields: [appointmentId], references: [id])
   patient          Patient              @relation(fields: [patientId], references: [id])
   doctor           User                 @relation("EncounterDoctor", fields: [doctorId], references: [id])
+  specialty        Specialty?           @relation(fields: [specialtyId], references: [id])
+  measurements     EncounterMeasurement[]
   diagnoses        EncounterDiagnosis[]
   prescriptions    Prescription[]
   orders           MedicalOrder[]
@@ -702,6 +714,7 @@ model Encounter {
   @@index([patientId, startedAt], map: "idx_encounters_patient")
   @@index([doctorId, startedAt], map: "idx_encounters_doctor")
   @@index([status])
+  @@index([specialtyId])
   @@map("encounters")
 }
 
@@ -711,6 +724,8 @@ model EncounterDiagnosis {
   encounterId Int       @map("encounter_id")
   icd10Code   String    @map("icd10_code") @db.VarChar(10)
   isPrimary   Boolean   @default(false) @map("is_primary")
+  /// გართულება (ფორმა 100: „ძირითადი / გართულება / თანმხლები“)
+  isComplication Boolean @default(false) @map("is_complication")
   note        String?   @db.VarChar(500)
   encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
   icd10       Icd10Code @relation(fields: [icd10Code], references: [code])
@@ -754,6 +769,8 @@ model Prescription {
   frequency   String    @db.VarChar(100)
   duration    String?   @db.VarChar(100)
   note        String?   @db.VarChar(500)
+  quantity    Int?      @db.SmallInt
+  rxNumber    String?   @map("rx_number") @db.VarChar(50)
   createdById Int?      @map("created_by")
   createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
   encounter   Encounter @relation(fields: [encounterId], references: [id])
@@ -850,6 +867,8 @@ model MedicalDocument {
   content       String                @db.Text
   pdfDocumentId Int?                  @map("pdf_document_id")
   sha256        String?               @db.Char(64)
+  /// დოკუმენტის ნომერი (ფორმა 100 — ცნობის №), ენიჭება ხელმოწერისას
+  docNumber     String?               @map("doc_number") @db.VarChar(30)
   createdById   Int?                  @map("created_by")
   createdAt     DateTime              @default(now()) @map("created_at") @db.DateTime(0)
   signedAt      DateTime?             @map("signed_at") @db.DateTime(0)
@@ -871,6 +890,7 @@ model MedicalDocument {
 enum SignerRole {
   doctor
   patient
+  head
 }
 
 /// ხელმოწერა: სურათი (PNG) დისკზე, device — საიდან (canvas ან მოწყობილობის SDK-ის სახელი).
@@ -880,7 +900,8 @@ model DocumentSignature {
   signerRole   SignerRole      @map("signer_role")
   signerName   String          @map("signer_name") @db.VarChar(201)
   signerUserId Int?            @map("signer_user_id")
-  imagePath    String          @map("image_path") @db.VarChar(255)
+  /// null — ხელით, დაბეჭდილზე (device = "manual")
+  imagePath    String?         @map("image_path") @db.VarChar(255)
   device       String          @db.VarChar(50)
   signedAt     DateTime        @map("signed_at") @db.DateTime(0)
   document     MedicalDocument @relation(fields: [documentId], references: [id])
@@ -925,4 +946,82 @@ model AuditLog {
   @@index([userId, createdAt], map: "idx_audit_log_user")
   @@index([createdAt], map: "idx_audit_log_created")
   @@map("audit_log")
+}
+
+// ─── სპეციალობის მაჩვენებლები (ადმინი ამატებს, რაოდენობა შეუზღუდავია) ───
+
+enum MeasurementType {
+  number
+  text
+  select
+  boolean
+}
+
+/// none — ერთი მნიშვნელობა; eyes — OD/OS; limbs — მარჯვენა/მარცხენა
+enum MeasurementSides {
+  none
+  eyes
+  limbs
+}
+
+enum MeasurementSide {
+  none
+  right
+  left
+}
+
+/// მაჩვენებლების ცნობარი (ერთი მაჩვენებელი რამდენიმე სპეციალობას შეიძლება ჰქონდეს)
+model MeasurementDefinition {
+  id         Int              @id @default(autoincrement())
+  name       String           @unique(map: "uq_measurement_definitions_name") @db.VarChar(150)
+  unit       String?          @db.VarChar(30)
+  type       MeasurementType  @default(number)
+  sides      MeasurementSides @default(none)
+  /// რიცხვის დასაშვები ფარგლები (შეყვანის შეცდომისგან დაცვა) და ნორმა (↑/↓ ნიშანი)
+  minValue   Decimal?         @map("min_value") @db.Decimal(14, 4)
+  maxValue   Decimal?         @map("max_value") @db.Decimal(14, 4)
+  normalMin  Decimal?         @map("normal_min") @db.Decimal(14, 4)
+  normalMax  Decimal?         @map("normal_max") @db.Decimal(14, 4)
+  decimals   Int              @default(0) @db.TinyInt
+  /// არჩევანის ვარიანტები (select) — JSON მასივი
+  options    String?          @db.Text
+  createdAt  DateTime         @map("created_at") @db.DateTime(0)
+  updatedAt  DateTime         @map("updated_at") @db.DateTime(0)
+  specialties SpecialtyMeasurement[]
+  values      EncounterMeasurement[]
+
+  @@map("measurement_definitions")
+}
+
+/// სპეციალობის მაჩვენებლების ნაკრები: რიგი, სავალდებულოა თუ არა (ვიზიტის დასრულებისას)
+model SpecialtyMeasurement {
+  specialtyId  Int                   @map("specialty_id")
+  definitionId Int                   @map("definition_id")
+  sortOrder    Int                   @default(0) @map("sort_order")
+  required     Boolean               @default(false)
+  specialty    Specialty             @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+  definition   MeasurementDefinition @relation(fields: [definitionId], references: [id])
+
+  @@id([specialtyId, definitionId])
+  @@index([definitionId])
+  @@map("specialty_measurements")
+}
+
+/// ვიზიტის მაჩვენებლების მნიშვნელობები (რიცხვი — value_num, დანარჩენი — value_text)
+model EncounterMeasurement {
+  id           Int                   @id @default(autoincrement())
+  encounterId  Int                   @map("encounter_id")
+  patientId    Int                   @map("patient_id")
+  definitionId Int                   @map("definition_id")
+  side         MeasurementSide       @default(none)
+  valueNum     Decimal?              @map("value_num") @db.Decimal(14, 4)
+  valueText    String?               @map("value_text") @db.VarChar(500)
+  encounter    Encounter             @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  patient      Patient               @relation(fields: [patientId], references: [id])
+  definition   MeasurementDefinition @relation(fields: [definitionId], references: [id])
+
+  @@unique([encounterId, definitionId, side], map: "uq_encounter_measurements")
+  @@index([patientId, definitionId, encounterId], map: "idx_encounter_measurements_trend")
+  @@index([definitionId])
+  @@map("encounter_measurements")
 }

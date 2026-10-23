@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
+import { notifyArrival } from "@/lib/notifications";
 import { calcLine, fromTetri, invoiceDebt, invoiceStatus, type LineAmounts, netPaid, sumLines, toTetri } from "@/modules/finance/calc";
 import type { z } from "zod";
 import type { invoiceSchema } from "@/modules/finance/schema";
@@ -123,6 +124,7 @@ export async function createInvoice(
         where: { id: input.appointmentId },
         data: { status: "arrived", arrivedAt: new Date(), updatedById: userId },
       });
+      await notifyArrival(tx, input.appointmentId);
     }
   } else if (doctorId) {
     const doctor = await tx.user.findFirst({ where: { id: doctorId, isActive: true, role: { code: "doctor" } } });
@@ -231,6 +233,7 @@ async function queueWalkIn(tx: Db, patientId: number, doctorUserId: number, user
     },
     select: { id: true },
   });
+  await notifyArrival(tx, appointment.id);
   return appointment.id;
 }
 

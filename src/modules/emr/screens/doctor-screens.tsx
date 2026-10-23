@@ -62,7 +62,8 @@ export async function DoctorHomeScreen({ user, params }: { user: User; params: S
   // მომლოდინეები („მობრძანდა“, მათ შორის ცოცხალი რიგი) — ზემოთ, მოსვლის მიხედვით; დანარჩენი — დროის მიხედვით
   const waiting = rows
     .filter((r) => r.status === "arrived")
-    .sort((a, b) => (a.arrivedTs ?? Number.MAX_SAFE_INTEGER) - (b.arrivedTs ?? Number.MAX_SAFE_INTEGER));
+    // ბოლოს მოსული — ზემოთ
+    .sort((a, b) => (b.arrivedTs ?? 0) - (a.arrivedTs ?? 0));
   const rest = rows.filter((r) => r.status !== "arrived");
 
   return (

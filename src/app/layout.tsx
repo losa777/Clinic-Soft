@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Noto_Sans_Georgian } from "next/font/google";
+import { NavigationProgress } from "@/components/navigation-progress";
 import { Toaster } from "@/components/ui/sonner";
 import { THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col">
+        <NavigationProgress />
         {children}
         <Toaster position="top-center" richColors />
       </body>

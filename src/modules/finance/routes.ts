@@ -30,6 +30,15 @@ export const FINANCE_ROUTES = {
     receipts: null,
     patients: null,
   },
+  // ადმინს ყველა უფლება აქვს: ინვოისები (გადახდა, დაბრუნება, გაუქმება), სალარო, ანგარიშები
+  admin: {
+    invoices: "/admin/invoices",
+    cash: "/admin/cash",
+    debts: "/admin/debts",
+    reports: "/admin/reports",
+    receipts: "/admin/receipts",
+    patients: "/admin/patients",
+  },
   director: {
     invoices: "/director/invoices",
     cash: null,

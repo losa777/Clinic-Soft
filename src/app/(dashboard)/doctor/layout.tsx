@@ -2,6 +2,7 @@ import { RoleNav } from "@/components/role-nav";
 import { APPOINTMENT_ROUTES } from "@/lib/appointment-routes";
 import { requireRole } from "@/lib/dal";
 import { DOCTOR_HOME, DOCTOR_PATIENTS } from "@/modules/emr/screens/doctor-screens";
+import { DOCTOR_STATS } from "@/modules/emr/screens/doctor-stats";
 
 export const instant = false;
 
@@ -16,6 +17,7 @@ export default async function DoctorLayout({ children }: { children: React.React
           { href: DOCTOR_HOME, label: "დღის განრიგი", icon: "schedule" },
           { href: DOCTOR_PATIENTS, label: "პაციენტები", icon: "patients" },
           { href: APPOINTMENT_ROUTES.doctor.booking, label: "დაჯავშნა", icon: "booking" },
+          { href: DOCTOR_STATS, label: "სტატისტიკა", icon: "reports" },
         ]}
       />
       {children}

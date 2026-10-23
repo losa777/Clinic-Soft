@@ -52,7 +52,8 @@ function PermissionsForm({ role, onDone }: { role: RoleRow; onDone: () => void }
           {locked ? "ადმინისტრატორს ყველა უფლება აქვს და შეცვლა შეუძლებელია." : "ცვლილება მაშინვე მოქმედებს ამ როლის ყველა მომხმარებელზე."}
         </DialogDescription>
       </DialogHeader>
-      <ul className="flex flex-col divide-y rounded-lg border">
+      {/* სია გრძელია — გადახვევა სიის შიგნით, ღილაკები ყოველთვის ჩანს */}
+      <ul className="flex max-h-[55vh] flex-col divide-y overflow-y-auto rounded-lg border">
         {ALL_PERMISSIONS.map((code) => (
           <li key={code}>
             <label className="flex items-center gap-3 px-3 py-2 text-sm">

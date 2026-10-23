@@ -3,6 +3,7 @@
  */
 import { z } from "zod";
 import { isRealDate } from "@/lib/appointment-slots";
+import { MEASUREMENT_KEY } from "@/modules/emr/measurements";
 import { checkVital, VITAL_KEYS, type VitalKey } from "@/modules/emr/vitals";
 
 export const BLOOD_GROUPS = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"] as const;
@@ -97,10 +98,16 @@ export const encounterDraftSchema = z.object({
   recommendations: longText,
   ...(Object.fromEntries(VITAL_KEYS.map((k) => [k, vital(k)])) as Record<VitalKey, ReturnType<typeof vital>>),
   diagnoses: z
-    .array(z.object({ code: z.string().trim().min(1).max(10), primary: z.boolean() }))
+    .array(z.object({ code: z.string().trim().min(1).max(10), primary: z.boolean(), complication: z.boolean().default(false) }))
     .max(20, "მაქსიმუმ 20 დიაგნოზი")
     .refine((d) => d.filter((x) => x.primary).length <= 1, "ძირითადი დიაგნოზი მხოლოდ ერთი შეიძლება")
-    .refine((d) => new Set(d.map((x) => x.code)).size === d.length, "დიაგნოზი ორჯერაა"),
+    .refine((d) => new Set(d.map((x) => x.code)).size === d.length, "დიაგნოზი ორჯერაა")
+    .refine((d) => d.every((x) => !(x.primary && x.complication)), "ძირითადი დიაგნოზი გართულება ვერ იქნება"),
+  /** სპეციალობის მაჩვენებლები: "<definitionId>:<side>" → ფორმის ტექსტი (შემოწმება — სერვერზე, მაჩვენებლის ტიპით) */
+  measurements: z
+    .record(z.string().regex(MEASUREMENT_KEY), z.string().max(500))
+    .refine((m) => Object.keys(m).length <= 500, "ძალიან ბევრი მაჩვენებელი")
+    .default({}),
 });
 export type EncounterDraftInput = z.input<typeof encounterDraftSchema>;
 
@@ -121,6 +128,14 @@ export const prescriptionSchema = z.object({
   frequency: text("მიღების სიხშირე", 100),
   duration: optional(100),
   note: optional(500),
+  /** რაოდენობა (შეფუთვა) და რეცეპტის ნომერი — ფორმა 100-ის მედიკამენტების ცხრილისთვის */
+  quantity: z
+    .string()
+    .trim()
+    .regex(/^\d{0,3}$/, "რაოდენობა: 1–999")
+    .transform((v) => (v ? Number(v) : null))
+    .refine((v) => v === null || v > 0, "რაოდენობა: 1–999"),
+  rxNumber: optional(50),
   /** ექიმმა ალერგიის გაფრთხილება ნახა და მაინც ნიშნავს */
   acknowledgeAllergy: z.boolean(),
 });

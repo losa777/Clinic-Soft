@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2, Search } from "lucide-react";
+import { useDropdownPosition } from "@/components/search-picker";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { searchIcd10Action } from "@/modules/emr/actions/profile-actions";
@@ -27,10 +29,14 @@ export function Icd10Picker({
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<{ q: string; rows: Icd10Option[] } | null>(null);
+  const [found, setFound] = useState<{ q: string; rows: Icd10Option[] } | null>(
+    null,
+  );
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim();
+  const position = useDropdownPosition(inputRef, open && q.length >= 2);
 
   useEffect(() => {
     if (q.length < 2) return;
@@ -60,6 +66,7 @@ export function Icd10Picker({
     <div className="relative">
       <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
+        ref={inputRef}
         id={id}
         role="combobox"
         aria-expanded={open}
@@ -76,7 +83,12 @@ export function Icd10Picker({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            if (rows.length) setActive((a) => (a + (e.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length);
+            if (rows.length)
+              setActive(
+                (a) =>
+                  (a + (e.key === "ArrowDown" ? 1 : rows.length - 1)) %
+                  rows.length,
+              );
           } else if (e.key === "Enter") {
             e.preventDefault();
             if (open && rows[active]) select(rows[active]);
@@ -86,29 +98,54 @@ export function Icd10Picker({
         autoComplete="off"
         className="h-10 pr-8 pl-8"
       />
-      {loading && <Loader2 className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
-      {open && q.length >= 2 && !loading && (
-        <ul role="listbox" className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-lg bg-popover p-1 text-sm shadow-md ring-1 ring-foreground/10">
-          {rows.length === 0 && <li className="px-2 py-2 text-muted-foreground">ვერაფერი მოიძებნა</li>}
-          {rows.map((r, i) => (
-            <li
-              key={r.code}
-              role="option"
-              aria-selected={i === active}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => select(r)}
-              onMouseEnter={() => setActive(i)}
-              className={cn("flex cursor-pointer gap-3 rounded-md px-2 py-1.5", i === active && "bg-accent text-accent-foreground")}
-            >
-              <span className="w-14 shrink-0 font-mono font-medium">{r.code}</span>
-              <span className="min-w-0">
-                {r.nameKa}
-                {r.nameEn && r.nameEn !== r.nameKa && <span className="block truncate text-xs text-muted-foreground">{r.nameEn}</span>}
-              </span>
-            </li>
-          ))}
-        </ul>
+      {loading && (
+        <Loader2 className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
       )}
+      {/* body-ში (portal), რომ ბარათის/ფორმის კონტეინერი სიას არ ჭრიდეს */}
+      {open &&
+        q.length >= 2 &&
+        !loading &&
+        position &&
+        createPortal(
+          <ul
+            role="listbox"
+            style={position}
+            className="fixed z-50 overflow-y-auto rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10"
+          >
+            {rows.length === 0 && (
+              <li className="px-2 py-2 text-muted-foreground">
+                ვერაფერი მოიძებნა
+              </li>
+            )}
+            {rows.map((r, i) => (
+              <li
+                key={r.code}
+                role="option"
+                aria-selected={i === active}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => select(r)}
+                onMouseEnter={() => setActive(i)}
+                className={cn(
+                  "flex cursor-pointer gap-3 rounded-md px-2 py-1.5",
+                  i === active && "bg-accent text-accent-foreground",
+                )}
+              >
+                <span className="w-14 shrink-0 font-mono font-medium">
+                  {r.code}
+                </span>
+                <span className="min-w-0">
+                  {r.nameKa}
+                  {r.nameEn && r.nameEn !== r.nameKa && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {r.nameEn}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </div>
   );
 }

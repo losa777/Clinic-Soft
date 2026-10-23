@@ -132,3 +132,71 @@
     @apply font-sans;
   }
 }
+/* გვერდებს შორის გადასვლის ზოლი (NavigationProgress): სწრაფად იზრდება, მერე ნელდება — სანამ გვერდი მოვა */
+@keyframes nav-progress {
+  0% { width: 0; }
+  20% { width: 45%; }
+  60% { width: 75%; }
+  100% { width: 92%; }
+}
+.nav-progress-loading {
+  animation: nav-progress 8s cubic-bezier(0.1, 0.6, 0.2, 1) forwards;
+}
+html.navigating,
+html.navigating * {
+  cursor: progress !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress-loading {
+    animation: none;
+    width: 70%;
+  }
+}
+
+/*
+ * ბრაუზერის საკუთარი ელემენტები (select-ის ჩამოშლილი სია, თარიღის არჩევა, scrollbar) — თემის მიხედვით:
+ * color-scheme ბრაუზერს ეუბნება, მუქი თუ ღია ხატოს; option-ებს ფერი თემის ტოკენებიდან (popover).
+ */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
+select option:disabled {
+  color: var(--muted-foreground);
+}
+
+/*
+ * ჩანართების ზოლი (ნავიგაცია), რომელიც ეკრანზე არ ეტევა: მხოლოდ ჰორიზონტალური, თხელი, თემის ფერის scrollbar
+ * (ისრების გარეშე); მაუსის მიტანისას — მუქდება.
+ */
+.tab-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent) transparent;
+  overscroll-behavior-x: contain;
+}
+.tab-scroll:hover {
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 65%, transparent) transparent;
+}
+/* Safari (scrollbar-color-ს არ იცნობს) */
+.tab-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tab-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+}
+.tab-scroll:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
+}
