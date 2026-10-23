@@ -145,7 +145,8 @@ export function SearchPicker({
 const MAX_LIST_HEIGHT = 288;
 
 /** სიის პოზიცია ველის ქვემოთ (ან ზემოთ, თუ ქვემოთ ადგილი არ არის); გადახვევისას და ზომის შეცვლისას ახლდება. */
-function useDropdownPosition(anchor: React.RefObject<HTMLElement | null>, open: boolean) {
+/** ჩამოსაშლელი სიის პოზიცია (fixed, body-ში): ველის ქვემოთ, ან ზემოთ — თუ ქვემოთ ადგილი არ არის. */
+export function useDropdownPosition(anchor: React.RefObject<HTMLElement | null>, open: boolean) {
   const [style, setStyle] = useState<React.CSSProperties | null>(null);
 
   useLayoutEffect(() => {

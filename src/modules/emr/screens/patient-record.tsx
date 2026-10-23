@@ -17,6 +17,7 @@ import { EncounterForm } from "@/modules/emr/components/encounter-form";
 import { MedicalDocuments } from "@/modules/emr/components/medical-documents";
 import { BookingLinks, OrdersPanel } from "@/modules/emr/components/orders-panel";
 import { loadCompletionPreviewForView } from "@/modules/emr/server/completion";
+import { loadStampPath } from "@/modules/finance/server/stamp";
 import { loadMedicalDocuments } from "@/modules/emr/server/documents";
 import { loadEncounterOrders, loadOrderOptions } from "@/modules/emr/server/orders";
 import { doctorBookingHref } from "./doctor-booking";
@@ -69,7 +70,10 @@ export async function PatientRecord({
   ]);
   if (!card) notFound();
   // დასრულების ბილინგი — მხოლოდ საკუთარ, დაუსრულებელ ვიზიტზე
-  const completion = encounter?.editable ? await loadCompletionPreviewForView(encounter.id) : null;
+  const [completion, stampAvailable] = await Promise.all([
+    encounter?.editable ? loadCompletionPreviewForView(encounter.id) : Promise.resolve(null),
+    loadStampPath().then(Boolean),
+  ]);
   await audit({ userId, action: "view", entity: "patient", entityId: patientId, patientId, details: appointment ? `ჯავშანი ${appointment.id}` : null });
 
   const canEdit = can(user, "emr.edit");
@@ -92,6 +96,7 @@ export async function PatientRecord({
             {card.age} წ. · {card.gender} · დაბ. {card.birthDate} · <span className="font-mono">{card.personalId}</span>
             {card.phone && ` · ${card.phone}`}
             {card.address && ` · ${card.address}`}
+            {card.cardNumber && ` · ბარათი № ${card.cardNumber}`}
           </p>
         </div>
         {appointment && <AppointmentBar appointment={appointment} visitHref={tabHref("visit")} canEdit={canEdit} />}
@@ -148,6 +153,7 @@ export async function PatientRecord({
                   userId={userId}
                   canEdit={canEdit}
                   canSign={can(user, "documents.sign")}
+                  stampAvailable={stampAvailable}
                 />
                 <section className="flex flex-col gap-2">
                   <h3 className="text-sm font-medium">პაციენტის ფაილები</h3>

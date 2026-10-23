@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { type EncounterDraftInput, encounterDraftSchema, type TemplateInput, templateSchema } from "@/modules/emr/schema";
 import { audit } from "@/modules/emr/server/audit";
 import { EMR_TX, EmrError } from "@/modules/emr/server/errors";
+import { saveEncounterMeasurements } from "@/modules/emr/server/measurements";
 
 export type DraftSaveResult = { ok: true; version: number; savedAt: string } | (ActionFailure & { conflict?: boolean });
 
@@ -22,7 +23,7 @@ export async function saveEncounterDraftAction(input: EncounterDraftInput): Prom
   const me = await requirePermission("emr.edit");
   const parsed = encounterDraftSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { encounterId, version, diagnoses, ...fields } = parsed.data;
+  const { encounterId, version, diagnoses, measurements, ...fields } = parsed.data;
   const userId = Number(me.id);
 
   try {
@@ -46,10 +47,11 @@ export async function saveEncounterDraftAction(input: EncounterDraftInput): Prom
       if (count === 0) {
         throw new EmrError("ჩანაწერი სხვა ფანჯარაში შეიცვალა — განაახლეთ გვერდი (ბოლო ცვლილებები სხვა ფანჯარაშია)", { conflict: "1" });
       }
+      await saveEncounterMeasurements(tx, encounterId, e.patientId, measurements);
       await tx.encounterDiagnosis.deleteMany({ where: { encounterId } });
       if (diagnoses.length) {
         await tx.encounterDiagnosis.createMany({
-          data: diagnoses.map((d) => ({ encounterId, icd10Code: d.code, isPrimary: d.primary })),
+          data: diagnoses.map((d) => ({ encounterId, icd10Code: d.code, isPrimary: d.primary, isComplication: d.complication })),
         });
       }
 

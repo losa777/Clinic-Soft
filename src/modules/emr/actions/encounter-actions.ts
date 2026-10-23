@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/modules/emr/server/audit";
+import { ensureCardNumber } from "@/modules/emr/server/card";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
 
 export type StartEncounterResult = { ok: true; message: string; encounterId: number } | ActionFailure;
@@ -19,10 +20,17 @@ async function lockOwnAppointment(tx: Prisma.TransactionClient, appointmentId: n
   if (!locked.length) throw new EmrError("ჯავშანი ვერ მოიძებნა");
   const appointment = await tx.appointment.findUniqueOrThrow({
     where: { id: appointmentId },
-    select: { id: true, patientId: true, status: true, startTime: true, doctor: { select: { userId: true } }, encounter: { select: { id: true } } },
+    select: {
+      id: true,
+      patientId: true,
+      status: true,
+      startTime: true,
+      doctor: { select: { userId: true, specialtyId: true } },
+      encounter: { select: { id: true } },
+    },
   });
   if (appointment.doctor.userId !== userId) throw new EmrError("ეს ჯავშანი სხვა ექიმისაა");
-  return appointment;
+  return { ...appointment, specialtyId: appointment.doctor.specialtyId };
 }
 
 /**
@@ -47,10 +55,11 @@ export async function startEncounterAction(appointmentId: number): Promise<Start
       const encounter =
         a.encounter ??
         (await tx.encounter.create({
-          data: { appointmentId: a.id, patientId: a.patientId, doctorId: userId, startedAt: now, updatedAt: now },
+          data: { appointmentId: a.id, patientId: a.patientId, doctorId: userId, specialtyId: a.specialtyId, startedAt: now, updatedAt: now },
           select: { id: true },
         }));
       await tx.appointment.update({ where: { id: a.id }, data: { status: "in_progress", updatedById: userId } });
+      await ensureCardNumber(tx, a.patientId);
       await audit({ userId, action: "start", entity: "encounter", entityId: encounter.id, patientId: a.patientId }, tx);
       return encounter.id;
     }, EMR_TX);

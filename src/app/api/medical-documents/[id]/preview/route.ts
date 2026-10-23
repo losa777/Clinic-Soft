@@ -21,7 +21,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/medical-doc
     return new Response(null, { status: 303, headers: { Location: documentUrl(doc.pdfDocumentId) } });
   }
 
-  const input = await loadPdfInput(prisma, id);
+  const input = await loadPdfInput(prisma, id, { withStamp: true });
   if (!input) return new Response("დოკუმენტი ვერ მოიძებნა", { status: 404 });
   const pdf = await renderDocumentPdf({ ...input, draft: true, signatures: [] });
   return new Response(new Uint8Array(pdf), {

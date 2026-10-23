@@ -74,6 +74,7 @@ export async function PrescriptionPrintScreen({ encounterId, backHref }: { encou
                     <p>
                       S. {p.frequency}
                       {p.duration && `, ${p.duration}`}
+                      {p.quantity && ` · D.t.d. N ${p.quantity}`}
                     </p>
                     {p.note && <p className="text-neutral-700">{p.note}</p>}
                   </div>

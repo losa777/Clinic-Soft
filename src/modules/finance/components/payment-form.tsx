@@ -1,5 +1,6 @@
 "use client";
 
+import { startNavigationProgress } from "@/components/navigation-progress";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Banknote, CreditCard, Undo2 } from "lucide-react";
@@ -94,7 +95,7 @@ function useSubmit<T extends ActionResult | PaymentResult>(onDone: () => void, r
           return;
         }
         const href = "paymentId" in res && receiptHref ? receiptHref.replace("{paymentId}", String(res.paymentId)) : null;
-        toast.success(res.message, href ? { action: { label: "ქვითრის ბეჭდვა", onClick: () => router.push(href) }, duration: 10_000 } : undefined);
+        toast.success(res.message, href ? { action: { label: "ქვითრის ბეჭდვა", onClick: () => (startNavigationProgress(), router.push(href)) }, duration: 10_000 } : undefined);
         onDone();
         router.refresh();
       } catch {

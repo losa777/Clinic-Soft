@@ -60,11 +60,12 @@ export function EncounterHistory({ history, pageHref }: { history: History; page
                     {e.diagnoses.map((d) => (
                       <span key={d.code} className={cn("mr-3 inline-block", d.primary && "font-medium")}>
                         <span className="font-mono">{d.code}</span> {d.name}
-                        {d.primary && " (ძირითადი)"}
+                        {d.primary ? " (ძირითადი)" : d.complication ? " (გართულება)" : ""}
                       </span>
                     ))}
                   </p>
                 )}
+                {e.measurements.length > 0 && <Field label="მაჩვენებლები" value={e.measurements.join("\n")} />}
                 <Field label="ჩივილები" value={e.complaints} />
                 <Field label="ობიექტური გასინჯვა" value={e.examination} />
                 <Field label="მკურნალობის გეგმა" value={e.treatmentPlan} />

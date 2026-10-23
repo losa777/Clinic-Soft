@@ -1,30 +1,88 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { ArrowDown, ArrowUp, CircleCheck, CloudOff, FileStack, Loader2, Save, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CircleCheck,
+  CloudOff,
+  FileStack,
+  Loader2,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { FormField } from "@/components/form-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { createTemplateAction, deleteTemplateAction, saveEncounterDraftAction } from "@/modules/emr/actions/visit-form-actions";
-import { TEXT_FIELDS, type TemplateFieldCode, type TextFieldKey } from "@/modules/emr/schema";
-import type { DoctorTemplateRow, EncounterFormData } from "@/modules/emr/server/encounter";
-import { BMI_LABELS, bmi, checkVital, parseVital, VITAL_KEYS, VITALS, type VitalKey, vitalFlag } from "@/modules/emr/vitals";
+import {
+  createTemplateAction,
+  deleteTemplateAction,
+  saveEncounterDraftAction,
+} from "@/modules/emr/actions/visit-form-actions";
+import {
+  TEXT_FIELDS,
+  type TemplateFieldCode,
+  type TextFieldKey,
+} from "@/modules/emr/schema";
+import type {
+  DoctorTemplateRow,
+  EncounterFormData,
+} from "@/modules/emr/server/encounter";
+import {
+  BMI_LABELS,
+  bmi,
+  checkVital,
+  parseVital,
+  VITAL_KEYS,
+  VITALS,
+  type VitalKey,
+  vitalFlag,
+} from "@/modules/emr/vitals";
 import type { CompletionPreview } from "@/modules/emr/server/completion";
 import { CompleteVisit } from "./complete-visit";
 import { Icd10Picker } from "./icd10-picker";
+import { measurementErrors, MeasurementsPanel } from "./measurements-panel";
 
 /** აკრეფის შეწყვეტიდან ამდენ ხანში ინახება (ავტოშენახვა). */
 const AUTOSAVE_MS = 2500;
 
-type Diagnosis = { code: string; name: string; primary: boolean };
-type SaveState = { kind: "saved"; at: string } | { kind: "dirty" } | { kind: "saving" } | { kind: "invalid" } | { kind: "error"; message: string } | { kind: "conflict"; message: string };
+type Diagnosis = {
+  code: string;
+  name: string;
+  primary: boolean;
+  complication: boolean;
+};
+type DiagnosisKind = "primary" | "complication" | "concomitant";
+
+const DIAGNOSIS_KINDS: { value: DiagnosisKind; label: string }[] = [
+  { value: "primary", label: "ძირითადი" },
+  { value: "complication", label: "გართულება" },
+  { value: "concomitant", label: "თანმხლები" },
+];
+const kindOf = (d: Diagnosis): DiagnosisKind =>
+  d.primary ? "primary" : d.complication ? "complication" : "concomitant";
+type SaveState =
+  | { kind: "saved"; at: string }
+  | { kind: "dirty" }
+  | { kind: "saving" }
+  | { kind: "invalid" }
+  | { kind: "error"; message: string }
+  | { kind: "conflict"; message: string };
 
 const toRaw = (v: number | null) => (v === null ? "" : String(v));
 
@@ -45,34 +103,59 @@ export function EncounterForm({
 }) {
   const [texts, setTexts] = useState<Record<TextFieldKey, string>>(data.texts);
   const [vitals, setVitals] = useState<Record<VitalKey, string>>(
-    () => Object.fromEntries(VITAL_KEYS.map((k) => [k, toRaw(data.vitals[k])])) as Record<VitalKey, string>,
+    () =>
+      Object.fromEntries(
+        VITAL_KEYS.map((k) => [k, toRaw(data.vitals[k])]),
+      ) as Record<VitalKey, string>,
   );
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>(data.diagnoses);
+  const [measures, setMeasures] = useState<Record<string, string>>(
+    data.measurements.values,
+  );
   const [templates, setTemplates] = useState(initialTemplates);
-  const [state, setState] = useState<SaveState>({ kind: "saved", at: data.savedAt });
+  const [state, setState] = useState<SaveState>({
+    kind: "saved",
+    at: data.savedAt,
+  });
   const [changes, setChanges] = useState(0);
   const version = useRef(data.version);
   const saving = useRef(false);
   // ბოლო მნიშვნელობები შენახვისთვის (ტაიმერი ძველ closure-ს არ იყენებს) და ცვლილებების მრიცხველი:
   // შენახვის დროს თუ ისევ შეიცვალა, სტატუსი „შეუნახავი“ რჩება და ტაიმერი ხელახლა შეინახავს
-  const latest = useRef({ texts, vitals, diagnoses });
+  const latest = useRef({ texts, vitals, diagnoses, measures });
   const changeSeq = useRef(0);
   // ბოლო წარმატებით შენახული ცვლილების ნომერი (დასრულებამდე flush-ისთვის)
   const savedSeq = useRef(0);
   useEffect(() => {
-    latest.current = { texts, vitals, diagnoses };
-  }, [texts, vitals, diagnoses]);
+    latest.current = { texts, vitals, diagnoses, measures };
+  }, [texts, vitals, diagnoses, measures]);
 
-  const parsed = Object.fromEntries(VITAL_KEYS.map((k) => [k, parseVital(vitals[k])])) as Record<VitalKey, number | null>;
-  const vitalErrors = Object.fromEntries(VITAL_KEYS.map((k) => [k, checkVital(k, parsed[k])])) as Record<VitalKey, string | null>;
-  const hasErrors = VITAL_KEYS.some((k) => vitalErrors[k]);
+  const parsed = Object.fromEntries(
+    VITAL_KEYS.map((k) => [k, parseVital(vitals[k])]),
+  ) as Record<VitalKey, number | null>;
+  const vitalErrors = Object.fromEntries(
+    VITAL_KEYS.map((k) => [k, checkVital(k, parsed[k])]),
+  ) as Record<VitalKey, string | null>;
+  const measureErrors = measurementErrors(data.measurements.defs, measures);
+  const hasErrors =
+    VITAL_KEYS.some((k) => vitalErrors[k]) ||
+    Object.keys(measureErrors).length > 0;
+  // საერთო ვიტალური: სპეციალობა თუ მალავს — მაინც ჩანს, თუ ამ ვიზიტზე უკვე შევსებულია
+  const showVitals =
+    data.measurements.showCommonVitals ||
+    VITAL_KEYS.some((k) => data.vitals[k] !== null);
   const bmiValue = bmi(parsed.weightKg, parsed.heightCm);
 
   const save = useCallback(async () => {
     if (saving.current) return;
-    const { texts: t, vitals: v, diagnoses: d } = latest.current;
-    const values = Object.fromEntries(VITAL_KEYS.map((k) => [k, parseVital(v[k])])) as Record<VitalKey, number | null>;
-    if (VITAL_KEYS.some((k) => checkVital(k, values[k]))) {
+    const { texts: t, vitals: v, diagnoses: d, measures: m } = latest.current;
+    const values = Object.fromEntries(
+      VITAL_KEYS.map((k) => [k, parseVital(v[k])]),
+    ) as Record<VitalKey, number | null>;
+    if (
+      VITAL_KEYS.some((k) => checkVital(k, values[k])) ||
+      Object.keys(measurementErrors(data.measurements.defs, m)).length
+    ) {
       setState({ kind: "invalid" });
       return;
     }
@@ -85,25 +168,42 @@ export function EncounterForm({
         version: version.current,
         ...t,
         ...values,
-        diagnoses: d.map((x) => ({ code: x.code, primary: x.primary })),
+        diagnoses: d.map((x) => ({
+          code: x.code,
+          primary: x.primary,
+          complication: x.complication,
+        })),
+        // მხოლოდ შევსებული (ცარიელი — იშლება)
+        measurements: Object.fromEntries(
+          Object.entries(m).filter(([, value]) => value.trim()),
+        ),
       });
       if (res.ok) {
         version.current = res.version;
         savedSeq.current = sentSeq;
-        if (changeSeq.current === sentSeq) setState({ kind: "saved", at: res.savedAt });
+        if (changeSeq.current === sentSeq)
+          setState({ kind: "saved", at: res.savedAt });
         else {
           // შენახვისას კიდევ შეიცვალა (ტაიმერი შეიძლება ამ დროს გამოტოვდა) — ტაიმერი თავიდან
           setState({ kind: "dirty" });
           setChanges((n) => n + 1);
         }
-      } else if (res.conflict) setState({ kind: "conflict", message: res.error ?? "კონფლიქტი" });
-      else setState({ kind: "error", message: res.error ?? "შენახვა ვერ მოხერხდა" });
+      } else if (res.conflict)
+        setState({ kind: "conflict", message: res.error ?? "კონფლიქტი" });
+      else
+        setState({
+          kind: "error",
+          message: res.error ?? "შენახვა ვერ მოხერხდა",
+        });
     } catch {
-      setState({ kind: "error", message: "კავშირის შეცდომა — ცვლილებები ჯერ არ შეინახა" });
+      setState({
+        kind: "error",
+        message: "კავშირის შეცდომა — ცვლილებები ჯერ არ შეინახა",
+      });
     } finally {
       saving.current = false;
     }
-  }, [data.id]);
+  }, [data.id, data.measurements.defs]);
 
   /** ყველა ცვლილების შენახვა ახლავე (ვიზიტის დასრულებამდე): true — ყველაფერი შენახულია. */
   const flush = useCallback(async () => {
@@ -124,7 +224,11 @@ export function EncounterForm({
   }, [changes, data.editable, save]);
 
   // შეუნახავი ცვლილებებით გვერდიდან გასვლისას — გაფრთხილება
-  const unsaved = state.kind === "dirty" || state.kind === "saving" || state.kind === "invalid" || state.kind === "error";
+  const unsaved =
+    state.kind === "dirty" ||
+    state.kind === "saving" ||
+    state.kind === "invalid" ||
+    state.kind === "error";
   useEffect(() => {
     if (!unsaved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -154,9 +258,17 @@ export function EncounterForm({
         <span className="text-muted-foreground">
           {data.doctor} · დაიწყო {data.startedAt}
         </span>
-        {data.status === "completed" && <Badge variant="outline">დასრულებული — ჩაკეტილია</Badge>}
-        {!data.editable && data.status === "draft" && <Badge variant="secondary">სხვა ექიმის ვიზიტი — მხოლოდ სანახავად</Badge>}
-        {data.editable && <SaveIndicator state={state} onSave={save} hasErrors={hasErrors} />}
+        {data.status === "completed" && (
+          <Badge variant="outline">დასრულებული — ჩაკეტილია</Badge>
+        )}
+        {!data.editable && data.status === "draft" && (
+          <Badge variant="secondary">
+            სხვა ექიმის ვიზიტი — მხოლოდ სანახავად
+          </Badge>
+        )}
+        {data.editable && (
+          <SaveIndicator state={state} onSave={save} hasErrors={hasErrors} />
+        )}
       </div>
       {state.kind === "conflict" && (
         <Alert variant="destructive">
@@ -164,45 +276,70 @@ export function EncounterForm({
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>ვიტალური მაჩვენებლები</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {VITAL_KEYS.map((k) => (
-            <VitalInput
-              key={k}
-              k={k}
-              raw={vitals[k]}
-              value={parsed[k]}
-              error={vitalErrors[k]}
-              disabled={!editable}
-              onChange={(raw) => {
-                setVitals((v) => ({ ...v, [k]: raw }));
-                changed();
-              }}
-            />
-          ))}
-          <div className="col-span-2 flex items-end gap-2 rounded-lg bg-muted/40 px-3 py-2 sm:col-span-4">
-            <span className="text-sm text-muted-foreground">BMI:</span>
-            {bmiValue ? (
-              <>
-                <b className="text-lg tabular-nums">{bmiValue.value}</b>
-                <Badge variant={bmiValue.category === "normal" ? "secondary" : "destructive"}>{BMI_LABELS[bmiValue.category]}</Badge>
-              </>
-            ) : (
-              <span className="text-sm text-muted-foreground">წონა და სიმაღლე → ავტომატურად</span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {showVitals && (
+        <Card>
+          <CardHeader>
+            <CardTitle>ვიტალური მაჩვენებლები</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {VITAL_KEYS.map((k) => (
+              <VitalInput
+                key={k}
+                k={k}
+                raw={vitals[k]}
+                value={parsed[k]}
+                error={vitalErrors[k]}
+                disabled={!editable}
+                onChange={(raw) => {
+                  setVitals((v) => ({ ...v, [k]: raw }));
+                  changed();
+                }}
+              />
+            ))}
+            <div className="col-span-2 flex items-end gap-2 rounded-lg bg-muted/40 px-3 py-2 sm:col-span-4">
+              <span className="text-sm text-muted-foreground">BMI:</span>
+              {bmiValue ? (
+                <>
+                  <b className="text-lg tabular-nums">{bmiValue.value}</b>
+                  <Badge
+                    variant={
+                      bmiValue.category === "normal"
+                        ? "secondary"
+                        : "destructive"
+                    }
+                  >
+                    {BMI_LABELS[bmiValue.category]}
+                  </Badge>
+                </>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  წონა და სიმაღლე → ავტომატურად
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <MeasurementsPanel
+        defs={data.measurements.defs}
+        values={measures}
+        errors={measureErrors}
+        disabled={!editable}
+        onChange={(key, value) => {
+          setMeasures((m) => ({ ...m, [key]: value }));
+          changed();
+        }}
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>გასინჯვა</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {TEXT_FIELDS.filter((f) => f.key !== "treatmentPlan" && f.key !== "recommendations").map((f) => (
+          {TEXT_FIELDS.filter(
+            (f) => f.key !== "treatmentPlan" && f.key !== "recommendations",
+          ).map((f) => (
             <TextBlock
               key={f.key}
               field={f}
@@ -225,37 +362,84 @@ export function EncounterForm({
             <Icd10Picker
               id="diagnosis-search"
               onSelect={(o) => {
-                if (diagnoses.some((d) => d.code === o.code)) return toast.info(`${o.code} უკვე დამატებულია`);
+                if (diagnoses.some((d) => d.code === o.code))
+                  return toast.info(`${o.code} უკვე დამატებულია`);
                 // პირველი დიაგნოზი — ძირითადი
-                setDx([...diagnoses, { code: o.code, name: o.nameKa, primary: !diagnoses.some((d) => d.primary) }]);
+                setDx([
+                  ...diagnoses,
+                  {
+                    code: o.code,
+                    name: o.nameKa,
+                    primary: !diagnoses.some((d) => d.primary),
+                    complication: false,
+                  },
+                ]);
               }}
             />
           )}
           {diagnoses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">დიაგნოზი ჯერ არ არის (ვიზიტის დასრულებისთვის სავალდებულოა)</p>
+            <p className="text-sm text-muted-foreground">
+              დიაგნოზი ჯერ არ არის (ვიზიტის დასრულებისთვის სავალდებულოა)
+            </p>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {diagnoses.map((d) => (
-                <li key={d.code} className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm", d.primary && "border-primary bg-primary/5")}>
-                  <span className="w-14 shrink-0 font-mono font-medium">{d.code}</span>
+                <li
+                  key={d.code}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg border px-3 py-2 text-sm",
+                    d.primary && "border-primary bg-primary/5",
+                  )}
+                >
+                  <span className="w-14 shrink-0 font-mono font-medium">
+                    {d.code}
+                  </span>
                   <span className="flex-1">{d.name}</span>
                   {editable ? (
                     <>
-                      <label className="flex items-center gap-1.5 text-xs">
-                        <input
-                          type="radio"
-                          name="primary-diagnosis"
-                          checked={d.primary}
-                          onChange={() => setDx(diagnoses.map((x) => ({ ...x, primary: x.code === d.code })))}
-                        />
-                        ძირითადი
-                      </label>
+                      <select
+                        aria-label={`${d.code}: ტიპი`}
+                        value={kindOf(d)}
+                        onChange={(e) => {
+                          const kind = e.target.value as DiagnosisKind;
+                          setDx(
+                            diagnoses.map((x) =>
+                              x.code === d.code
+                                ? {
+                                    ...x,
+                                    primary: kind === "primary",
+                                    complication: kind === "complication",
+                                  }
+                                : // ძირითადი მხოლოდ ერთი — წინა ძირითადი თანმხლები ხდება
+                                  {
+                                    ...x,
+                                    primary:
+                                      kind === "primary" ? false : x.primary,
+                                  },
+                            ),
+                          );
+                        }}
+                        className="h-7 rounded-md border border-input bg-transparent px-1.5 text-xs dark:bg-input/30"
+                      >
+                        {DIAGNOSIS_KINDS.map((k) => (
+                          <option key={k.value} value={k.value}>
+                            {k.label}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         onClick={() => {
-                          const rest = diagnoses.filter((x) => x.code !== d.code);
+                          const rest = diagnoses.filter(
+                            (x) => x.code !== d.code,
+                          );
                           // ძირითადი წაიშალა — ძირითადი ხდება პირველი დარჩენილი
-                          if (d.primary && rest.length) rest[0] = { ...rest[0], primary: true };
+                          if (d.primary && rest.length)
+                            rest[0] = {
+                              ...rest[0],
+                              primary: true,
+                              complication: false,
+                            };
                           setDx(rest);
                         }}
                         className="rounded-sm text-muted-foreground hover:text-destructive"
@@ -265,7 +449,12 @@ export function EncounterForm({
                       </button>
                     </>
                   ) : (
-                    <span className="text-xs text-muted-foreground">{d.primary ? "ძირითადი" : "თანმხლები"}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {
+                        DIAGNOSIS_KINDS.find((k) => k.value === kindOf(d))
+                          ?.label
+                      }
+                    </span>
                   )}
                 </li>
               ))}
@@ -279,7 +468,9 @@ export function EncounterForm({
           <CardTitle>მკურნალობა</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {TEXT_FIELDS.filter((f) => f.key === "treatmentPlan" || f.key === "recommendations").map((f) => (
+          {TEXT_FIELDS.filter(
+            (f) => f.key === "treatmentPlan" || f.key === "recommendations",
+          ).map((f) => (
             <TextBlock
               key={f.key}
               field={f}
@@ -298,7 +489,7 @@ export function EncounterForm({
           encounterId={data.id}
           preview={completion}
           hasPrimaryDiagnosis={diagnoses.some((d) => d.primary)}
-          blocked={hasErrors ? "შეასწორეთ ვიტალური მაჩვენებლები" : null}
+          blocked={hasErrors ? "შეასწორეთ მონიშნული მაჩვენებლები" : null}
           flush={flush}
           getVersion={() => version.current}
         />
@@ -307,19 +498,57 @@ export function EncounterForm({
   );
 }
 
-function SaveIndicator({ state, onSave, hasErrors }: { state: SaveState; onSave: () => void; hasErrors: boolean }) {
+function SaveIndicator({
+  state,
+  onSave,
+  hasErrors,
+}: {
+  state: SaveState;
+  onSave: () => void;
+  hasErrors: boolean;
+}) {
   const view = {
-    saved: { icon: <CircleCheck className="size-4 text-emerald-600" />, text: state.kind === "saved" ? `შენახულია ${state.at}` : "" },
-    dirty: { icon: <Save className="size-4 text-muted-foreground" />, text: "შეუნახავი ცვლილებები" },
-    saving: { icon: <Loader2 className="size-4 animate-spin" />, text: "ინახება..." },
-    invalid: { icon: <CloudOff className="size-4 text-destructive" />, text: "შეასწორეთ მონიშნული მნიშვნელობები — შენახვა შეჩერებულია" },
-    error: { icon: <CloudOff className="size-4 text-destructive" />, text: state.kind === "error" ? state.message : "" },
-    conflict: { icon: <CloudOff className="size-4 text-destructive" />, text: "კონფლიქტი" },
+    saved: {
+      icon: <CircleCheck className="size-4 text-emerald-600" />,
+      text: state.kind === "saved" ? `შენახულია ${state.at}` : "",
+    },
+    dirty: {
+      icon: <Save className="size-4 text-muted-foreground" />,
+      text: "შეუნახავი ცვლილებები",
+    },
+    saving: {
+      icon: <Loader2 className="size-4 animate-spin" />,
+      text: "ინახება...",
+    },
+    invalid: {
+      icon: <CloudOff className="size-4 text-destructive" />,
+      text: "შეასწორეთ მონიშნული მნიშვნელობები — შენახვა შეჩერებულია",
+    },
+    error: {
+      icon: <CloudOff className="size-4 text-destructive" />,
+      text: state.kind === "error" ? state.message : "",
+    },
+    conflict: {
+      icon: <CloudOff className="size-4 text-destructive" />,
+      text: "კონფლიქტი",
+    },
   }[state.kind];
   return (
-    <span className="ml-auto flex items-center gap-2" role="status" aria-live="polite">
+    <span
+      className="ml-auto flex items-center gap-2"
+      role="status"
+      aria-live="polite"
+    >
       {view.icon}
-      <span className={cn(state.kind === "error" || state.kind === "invalid" ? "text-destructive" : "text-muted-foreground")}>{view.text}</span>
+      <span
+        className={cn(
+          state.kind === "error" || state.kind === "invalid"
+            ? "text-destructive"
+            : "text-muted-foreground",
+        )}
+      >
+        {view.text}
+      </span>
       {(state.kind === "dirty" || state.kind === "error") && !hasErrors && (
         <Button size="sm" variant="outline" onClick={onSave}>
           <Save />
@@ -348,7 +577,11 @@ function VitalInput({
   const spec = VITALS[k];
   const flag = error ? null : vitalFlag(k, value);
   return (
-    <FormField id={`vital-${k}`} label={`${spec.label} (${spec.unit})`} error={error ?? undefined}>
+    <FormField
+      id={`vital-${k}`}
+      label={`${spec.label} (${spec.unit})`}
+      error={error ?? undefined}
+    >
       <div className="relative">
         <Input
           id={`vital-${k}`}
@@ -364,8 +597,18 @@ function VitalInput({
             flag === "low" && "border-sky-500 text-sky-700 dark:text-sky-300",
           )}
         />
-        {flag === "high" && <ArrowUp className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-destructive" aria-label="ნორმაზე მაღალი" />}
-        {flag === "low" && <ArrowDown className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-sky-600" aria-label="ნორმაზე დაბალი" />}
+        {flag === "high" && (
+          <ArrowUp
+            className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-destructive"
+            aria-label="ნორმაზე მაღალი"
+          />
+        )}
+        {flag === "low" && (
+          <ArrowDown
+            className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-sky-600"
+            aria-label="ნორმაზე დაბალი"
+          />
+        )}
       </div>
     </FormField>
   );
@@ -384,7 +627,9 @@ function TextBlock({
   editable: boolean;
   templates: DoctorTemplateRow[];
   onChange: (value: string) => void;
-  onTemplatesChange: (update: (all: DoctorTemplateRow[]) => DoctorTemplateRow[]) => void;
+  onTemplatesChange: (
+    update: (all: DoctorTemplateRow[]) => DoctorTemplateRow[],
+  ) => void;
 }) {
   const [open, setOpen] = useState(false);
   const id = `encounter-${field.key}`;
@@ -392,7 +637,9 @@ function TextBlock({
     return (
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium">{field.label}</p>
-        <p className="min-h-6 text-sm whitespace-pre-line text-muted-foreground">{value || "—"}</p>
+        <p className="min-h-6 text-sm whitespace-pre-line text-muted-foreground">
+          {value || "—"}
+        </p>
       </div>
     );
   }
@@ -402,12 +649,25 @@ function TextBlock({
         <label htmlFor={id} className="text-sm font-medium">
           {field.label}
         </label>
-        <Button type="button" size="xs" variant="ghost" className="ml-auto" onClick={() => setOpen(true)}>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => setOpen(true)}
+        >
           <FileStack />
           შაბლონები{templates.length ? ` (${templates.length})` : ""}
         </Button>
       </div>
-      <Textarea id={id} value={value} onChange={(e) => onChange(e.target.value)} rows={3} maxLength={10_000} className="min-h-20" />
+      <Textarea
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        maxLength={10_000}
+        className="min-h-20"
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <TemplatesDialog
@@ -415,7 +675,9 @@ function TextBlock({
             current={value}
             templates={templates}
             onInsert={(content) => {
-              onChange(value.trim() ? `${value.trimEnd()}\n${content}` : content);
+              onChange(
+                value.trim() ? `${value.trimEnd()}\n${content}` : content,
+              );
               setOpen(false);
             }}
             onTemplatesChange={onTemplatesChange}
@@ -438,15 +700,24 @@ function TemplatesDialog({
   current: string;
   templates: DoctorTemplateRow[];
   onInsert: (content: string) => void;
-  onTemplatesChange: (update: (all: DoctorTemplateRow[]) => DoctorTemplateRow[]) => void;
+  onTemplatesChange: (
+    update: (all: DoctorTemplateRow[]) => DoctorTemplateRow[],
+  ) => void;
 }) {
   const [title, setTitle] = useState("");
   const [pending, startTransition] = useTransition();
 
   function saveCurrent() {
     startTransition(async () => {
-      const res = await createTemplateAction({ field: field.template as TemplateFieldCode, title, content: current });
-      if (!res.ok) return void toast.error(res.fieldErrors ? Object.values(res.fieldErrors)[0] : res.error);
+      const res = await createTemplateAction({
+        field: field.template as TemplateFieldCode,
+        title,
+        content: current,
+      });
+      if (!res.ok)
+        return void toast.error(
+          res.fieldErrors ? Object.values(res.fieldErrors)[0] : res.error,
+        );
       toast.success(res.message);
       setTitle("");
       onTemplatesChange((all) => [...all, res.template as DoctorTemplateRow]);
@@ -465,19 +736,38 @@ function TemplatesDialog({
     <div className="flex flex-col gap-4">
       <DialogHeader>
         <DialogTitle>შაბლონები — {field.label}</DialogTitle>
-        <DialogDescription>დააჭირეთ შაბლონს — ტექსტი ველს დაემატება.</DialogDescription>
+        <DialogDescription>
+          დააჭირეთ შაბლონს — ტექსტი ველს დაემატება.
+        </DialogDescription>
       </DialogHeader>
       {templates.length === 0 ? (
-        <p className="text-sm text-muted-foreground">ამ ველისთვის შაბლონი ჯერ არ გაქვთ.</p>
+        <p className="text-sm text-muted-foreground">
+          ამ ველისთვის შაბლონი ჯერ არ გაქვთ.
+        </p>
       ) : (
         <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
           {templates.map((t) => (
-            <li key={t.id} className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm">
-              <button type="button" onClick={() => onInsert(t.content)} className="min-w-0 flex-1 text-left hover:text-primary">
+            <li
+              key={t.id}
+              className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
+            >
+              <button
+                type="button"
+                onClick={() => onInsert(t.content)}
+                className="min-w-0 flex-1 text-left hover:text-primary"
+              >
                 <span className="font-medium">{t.title}</span>
-                <span className="line-clamp-2 block text-xs text-muted-foreground">{t.content}</span>
+                <span className="line-clamp-2 block text-xs text-muted-foreground">
+                  {t.content}
+                </span>
               </button>
-              <button type="button" onClick={() => remove(t.id)} disabled={pending} className="text-muted-foreground hover:text-destructive" aria-label="შაბლონის წაშლა">
+              <button
+                type="button"
+                onClick={() => remove(t.id)}
+                disabled={pending}
+                className="text-muted-foreground hover:text-destructive"
+                aria-label="შაბლონის წაშლა"
+              >
                 <Trash2 className="size-4" />
               </button>
             </li>
@@ -485,14 +775,30 @@ function TemplatesDialog({
         </ul>
       )}
       <div className="flex flex-col gap-2 border-t pt-3">
-        <p className="text-sm font-medium">მიმდინარე ტექსტის შენახვა შაბლონად</p>
+        <p className="text-sm font-medium">
+          მიმდინარე ტექსტის შენახვა შაბლონად
+        </p>
         <div className="flex gap-2">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="შაბლონის სახელი" maxLength={100} className="h-9" />
-          <Button type="button" onClick={saveCurrent} disabled={pending || !current.trim() || !title.trim()}>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="შაბლონის სახელი"
+            maxLength={100}
+            className="h-9"
+          />
+          <Button
+            type="button"
+            onClick={saveCurrent}
+            disabled={pending || !current.trim() || !title.trim()}
+          >
             შენახვა
           </Button>
         </div>
-        {!current.trim() && <p className="text-xs text-muted-foreground">ველი ცარიელია — ჯერ შეიყვანეთ ტექსტი.</p>}
+        {!current.trim() && (
+          <p className="text-xs text-muted-foreground">
+            ველი ცარიელია — ჯერ შეიყვანეთ ტექსტი.
+          </p>
+        )}
       </div>
       <DialogFooter />
     </div>

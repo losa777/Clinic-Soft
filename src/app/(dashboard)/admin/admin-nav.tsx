@@ -6,6 +6,7 @@ import {
   BriefcaseMedical,
   ClipboardList,
   Contact,
+  FileText,
   LayoutDashboard,
   Settings,
   ShieldCheck,
@@ -13,13 +14,16 @@ import {
   Stethoscope,
   Users,
 } from "lucide-react";
+import { useActiveTabIntoView } from "@/components/use-active-tab";
 import { cn } from "@/lib/utils";
 
-const LINKS = [
+const LINKS: { href: string; label: string; icon: typeof Users; also?: string[] }[] = [
   { href: "/admin", label: "მიმოხილვა", icon: LayoutDashboard },
   { href: "/admin/users", label: "მომხმარებლები", icon: Users },
   { href: "/admin/roles", label: "როლები", icon: ShieldCheck },
   { href: "/admin/patients", label: "პაციენტები", icon: Contact },
+  // ფინანსები: ინვოისები, სალარო, დავალიანებები, ანგარიშები, ქვითრები (ქვე-ჩანართები — admin/(finance)/layout.tsx)
+  { href: "/admin/invoices", label: "ფინანსები", icon: FileText, also: ["/admin/cash", "/admin/debts", "/admin/reports", "/admin/receipts"] },
   { href: "/admin/services", label: "სერვისები", icon: ClipboardList },
   { href: "/admin/doctors", label: "ექიმები", icon: Stethoscope },
   { href: "/admin/specialties", label: "სპეციალობები", icon: BriefcaseMedical },
@@ -29,12 +33,13 @@ const LINKS = [
 
 export function AdminNav() {
   const pathname = usePathname();
+  const navRef = useActiveTabIntoView<HTMLElement>(pathname);
 
   return (
-    <nav className="-mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0 print:hidden">
+    <nav ref={navRef} className="tab-scroll -mx-4 border-b px-4 sm:mx-0 sm:px-0 print:hidden">
       <ul className="flex gap-1">
-        {LINKS.map(({ href, label, icon: Icon }) => {
-          const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
+        {LINKS.map(({ href, label, icon: Icon, also = [] }) => {
+          const active = href === "/admin" ? pathname === href : [href, ...also].some((h) => pathname.startsWith(h));
           return (
             <li key={href}>
               <Link

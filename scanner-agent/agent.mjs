@@ -1,13 +1,14 @@
 /**
  * კლინიკის სკანერის აგენტი: მუშაობს სარეგისტრატურო კომპიუტერზე და საიტს აძლევს სკანირების საშუალებას.
- * სკანერს მართავს NAPS2-ის CLI-ით (WIA/TWAIN). დამოკიდებულებები არ აქვს, საჭიროა მხოლოდ Node.js 20+.
+ * სკანერს მართავს NAPS2-ის CLI-ით (WIA/TWAIN). დამოკიდებულებები არ აქვს: ეშვება Node.js 20+-ით (node agent.mjs)
+ * ან ცალკე exe-დ (ClinicScanAgent.exe — Node.js-ის გარეშე, აიწყობა build.mjs-ით, ყენდება ClinicScanAgentSetup.exe-ით).
  *
  * უსაფრთხოება:
  * - უსმენს მხოლოდ 127.0.0.1-ს (ქსელიდან მიუწვდომელია);
  * - პასუხობს მხოლოდ config.json-ის allowedOrigins-იდან (CORS + Origin-ის შემოწმება);
  * - Host-ის შემოწმება DNS rebinding-ის წინააღმდეგ.
  *
- * გაშვება: node agent.mjs   (ინსტალაცია/ავტოგაშვება: install.ps1, იხ. README.md)
+ * გაშვება: node agent.mjs   (ინსტალაცია: ClinicScanAgentSetup.exe ან install.ps1, იხ. README.md)
  */
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -15,10 +16,12 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { isSea } from "node:sea";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "1.0.0";
-const DIR = path.dirname(fileURLToPath(import.meta.url));
+const VERSION = "1.1.0";
+// exe-ად (Single Executable Application) — საქაღალდე exe-ის გვერდით; სკრიპტად — სკრიპტის გვერდით
+const DIR = isSea() ? path.dirname(process.execPath) : path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = path.join(DIR, "config.json");
 const SETTINGS_FILE = path.join(DIR, "settings.json");
 const LOG_FILE = path.join(DIR, "agent.log");
@@ -224,6 +227,8 @@ const server = createServer(async (req, res) => {
 
   // DNS rebinding: მოთხოვნა მხოლოდ 127.0.0.1/localhost მისამართით
   if (!allowedHosts.has(req.headers.host ?? "")) return send(403, { error: "აკრძალულია" });
+  // მუშაობს თუ არა (tray-ის ხატულა) — Origin-ის გარეშე, მონაცემებს არ აბრუნებს (CORS-ის გარეშე ბრაუზერი ვერ წაიკითხავს)
+  if (req.method === "GET" && req.url === "/health") return send(200, { ok: true, version: VERSION, naps2: existsSync(config.naps2Path) });
   // მხოლოდ კლინიკის საიტიდან (Origin-ის გარეშე — მაგ. სხვა პროგრამიდან — უარი)
   if (!origin || !allowedOrigins.has(origin)) {
     log("უარყოფილი Origin:", origin ?? "(არ არის)", req.method, req.url);

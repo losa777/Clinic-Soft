@@ -413,6 +413,127 @@ async function ensureEnum(table: string, column: string, values: string[], suffi
  * დიაგნოზები, შაბლონები, რეცეპტები, დანიშნულებები, დოკუმენტები და ხელმოწერები, შეტყობინებები, აუდიტი.
  * დრო აპლიკაციიდან იწერება (UTC) — იხ. createFinanceTables.
  */
+/**
+ * სპეციალობის მაჩვენებლები: ცნობარი (measurement_definitions), სპეციალობის ნაკრები (specialty_measurements),
+ * ვიზიტის მნიშვნელობები (encounter_measurements). ცნობარი ცარიელია — ემატება ნიმუშები (ოფთალმოლოგია, კარდიოლოგია).
+ */
+async function createMeasurementTables() {
+  await ensureColumn("specialties", "show_common_vitals", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("encounters", "specialty_id", "INT NULL AFTER doctor_id");
+  await ensureIndex("encounters", "encounters_specialty_id_idx", "specialty_id");
+  await ensureConstraint("encounters", "fk_encounters_specialty", "FOREIGN KEY (specialty_id) REFERENCES specialties (id)");
+  const fresh = !(await tableExists("measurement_definitions"));
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS measurement_definitions (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      name       VARCHAR(150) NOT NULL,
+      unit       VARCHAR(30)  NULL,
+      type       ENUM('number', 'text', 'select', 'boolean') NOT NULL DEFAULT 'number',
+      sides      ENUM('none', 'eyes', 'limbs') NOT NULL DEFAULT 'none',
+      min_value  DECIMAL(14,4) NULL,
+      max_value  DECIMAL(14,4) NULL,
+      normal_min DECIMAL(14,4) NULL,
+      normal_max DECIMAL(14,4) NULL,
+      decimals   TINYINT      NOT NULL DEFAULT 0,
+      options    TEXT         NULL,
+      created_at DATETIME     NOT NULL,
+      updated_at DATETIME     NOT NULL,
+      UNIQUE INDEX uq_measurement_definitions_name (name)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS specialty_measurements (
+      specialty_id  INT        NOT NULL,
+      definition_id INT        NOT NULL,
+      sort_order    INT        NOT NULL DEFAULT 0,
+      required      TINYINT(1) NOT NULL DEFAULT 0,
+      PRIMARY KEY (specialty_id, definition_id),
+      INDEX specialty_measurements_definition_id_idx (definition_id),
+      CONSTRAINT fk_specialty_measurements_specialty FOREIGN KEY (specialty_id) REFERENCES specialties (id) ON DELETE CASCADE,
+      CONSTRAINT fk_specialty_measurements_definition FOREIGN KEY (definition_id) REFERENCES measurement_definitions (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS encounter_measurements (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      encounter_id  INT           NOT NULL,
+      patient_id    INT           NOT NULL,
+      definition_id INT           NOT NULL,
+      side          ENUM('none', 'right', 'left') NOT NULL DEFAULT 'none',
+      value_num     DECIMAL(14,4) NULL,
+      value_text    VARCHAR(500)  NULL,
+      UNIQUE INDEX uq_encounter_measurements (encounter_id, definition_id, side),
+      INDEX idx_encounter_measurements_trend (patient_id, definition_id, encounter_id),
+      INDEX encounter_measurements_definition_id_idx (definition_id),
+      CONSTRAINT fk_encounter_measurements_encounter FOREIGN KEY (encounter_id) REFERENCES encounters (id) ON DELETE CASCADE,
+      CONSTRAINT fk_encounter_measurements_patient FOREIGN KEY (patient_id) REFERENCES patients (id),
+      CONSTRAINT fk_encounter_measurements_definition FOREIGN KEY (definition_id) REFERENCES measurement_definitions (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  if (fresh) await seedMeasurements();
+}
+
+/** ნიმუშები: ოფთალმოლოგია და კარდიოლოგია (სპეციალობა სახელით, თუ არსებობს). შემდეგ ადმინი ცვლის. */
+async function seedMeasurements() {
+  type Def = { name: string; unit?: string; type?: string; sides?: string; min?: number; max?: number; nmin?: number; nmax?: number; decimals?: number; options?: string[] };
+  const sets: { specialties: string[]; defs: Def[] }[] = [
+    {
+      specialties: ["ოფთალმოლოგია", "ოფთალმოლოგი"],
+      defs: [
+        { name: "მხედველობის სიმახვილე (Vis)", sides: "eyes", min: 0, max: 2, nmin: 0.8, decimals: 2 },
+        { name: "თვალშიდა წნევა (T)", unit: "მმ Hg", sides: "eyes", min: 5, max: 60, nmin: 10, nmax: 21, decimals: 1 },
+        { name: "სფერო (Sph)", unit: "D", sides: "eyes", min: -30, max: 30, decimals: 2 },
+        { name: "ცილინდრი (Cyl)", unit: "D", sides: "eyes", min: -10, max: 10, decimals: 2 },
+        { name: "ღერძი (Ax)", unit: "°", sides: "eyes", min: 0, max: 180 },
+      ],
+    },
+    {
+      specialties: ["კარდიოლოგი", "კარდიოლოგია"],
+      defs: [
+        { name: "გულის რიტმი", type: "select", options: ["სინუსური", "მოციმციმე არითმია", "ექსტრასისტოლია", "სხვა"] },
+        { name: "არტერიული წნევა (სისტოლური)", unit: "მმ Hg", sides: "limbs", min: 40, max: 300, nmin: 90, nmax: 139 },
+        { name: "არტერიული წნევა (დიასტოლური)", unit: "მმ Hg", sides: "limbs", min: 20, max: 200, nmin: 60, nmax: 89 },
+        { name: "QTc", unit: "მწმ", min: 250, max: 700, nmin: 350, nmax: 450 },
+        { name: "საერთო ქოლესტერინი", unit: "მმოლ/ლ", min: 0.5, max: 25, nmax: 5.2, decimals: 1 },
+        { name: "LDL ქოლესტერინი", unit: "მმოლ/ლ", min: 0.1, max: 15, nmax: 3, decimals: 1 },
+        { name: "შეშუპება ქვედა კიდურებზე", type: "boolean" },
+      ],
+    },
+  ];
+  const now = new Date();
+  for (const set of sets) {
+    const specialty = await prisma.specialty.findFirst({ where: { name: { in: set.specialties } } });
+    for (const [i, d] of set.defs.entries()) {
+      const def = await prisma.measurementDefinition.upsert({
+        where: { name: d.name },
+        update: {},
+        create: {
+          name: d.name,
+          unit: d.unit ?? null,
+          type: (d.type ?? "number") as "number",
+          sides: (d.sides ?? "none") as "none",
+          minValue: d.min ?? null,
+          maxValue: d.max ?? null,
+          normalMin: d.nmin ?? null,
+          normalMax: d.nmax ?? null,
+          decimals: d.decimals ?? 0,
+          options: d.options ? JSON.stringify(d.options) : null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      if (specialty) {
+        await prisma.specialtyMeasurement.upsert({
+          where: { specialtyId_definitionId: { specialtyId: specialty.id, definitionId: def.id } },
+          update: {},
+          create: { specialtyId: specialty.id, definitionId: def.id, sortOrder: i },
+        });
+      }
+    }
+  }
+  console.log("✔ მაჩვენებლების ნიმუშები: ოფთალმოლოგია, კარდიოლოგია");
+}
+
 async function createEmrTables() {
   // „მიღებაზე“ (in_progress) — ექიმმა დაიწყო მიღება
   await ensureEnum(
@@ -619,6 +740,17 @@ async function createEmrTables() {
       CONSTRAINT fk_medical_orders_performed_by FOREIGN KEY (performed_by) REFERENCES users (id) ON DELETE SET NULL
     ) ${TABLE_OPTIONS}
   `);
+  await createMeasurementTables();
+  // ფორმა 100: ბარათის ნომერი, გართულება, რეცეპტის რაოდენობა/ნომერი, ცნობის №, ხელმძღვანელის/ხელით ხელმოწერა
+  await ensureColumn("patients", "card_number", "INT NULL");
+  await ensureColumn("patients", "card_year", "SMALLINT NULL AFTER card_number");
+  await ensureIndex("patients", "idx_patients_card", "card_year, card_number");
+  await ensureColumn("encounter_diagnoses", "is_complication", "TINYINT(1) NOT NULL DEFAULT 0 AFTER is_primary");
+  await ensureColumn("prescriptions", "quantity", "SMALLINT NULL AFTER note");
+  await ensureColumn("prescriptions", "rx_number", "VARCHAR(50) NULL AFTER quantity");
+  await ensureColumn("medical_documents", "doc_number", "VARCHAR(30) NULL AFTER sha256");
+  await ensureEnum("document_signatures", "signer_role", ["doctor", "patient", "head"], "NOT NULL");
+  await prisma.$executeRawUnsafe("ALTER TABLE document_signatures MODIFY COLUMN image_path VARCHAR(255) NULL");
   // ვიზიტის დასრულებისას დარიცხული ინვოისი (ერთი დანიშნულება — ერთხელ)
   await ensureColumn("medical_orders", "invoice_id", "INT NULL AFTER updated_at");
   await ensureIndex("medical_orders", "idx_medical_orders_invoice_id", "invoice_id");

@@ -24,6 +24,7 @@ import {
 } from "@/lib/appointment-schema";
 import { addDays, formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { requirePermission } from "@/lib/dal";
+import { notifyArrival } from "@/lib/notifications";
 import { prisma } from "@/lib/db";
 import { type PatientSearchResult, searchPatients } from "@/lib/patient-records";
 import { can } from "@/lib/permissions";
@@ -265,6 +266,7 @@ export async function changeAppointmentStatus(input: StatusChangeInput): Promise
     data: { status, updatedById: Number(me.id), arrivedAt: status === "arrived" ? new Date() : null },
   });
   if (count === 0) return failure("ჯავშანი ამასობაში შეიცვალა — განაახლეთ გვერდი");
+  if (status === "arrived") await notifyArrival(prisma, appointmentId);
   return success(`სტატუსი: ${appointmentStatusLabel(status)}`);
 }
 

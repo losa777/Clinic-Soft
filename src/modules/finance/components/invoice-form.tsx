@@ -1,5 +1,6 @@
 "use client";
 
+import { startNavigationProgress } from "@/components/navigation-progress";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -139,6 +140,7 @@ export function InvoiceForm({ data, routes }: { data: InvoiceFormData; routes: F
           return;
         }
         toast.success(res.message);
+        startNavigationProgress();
         router.push(invoiceUrl(routes, res.invoiceId));
       } catch {
         toast.error("ინვოისი ვერ შეიქმნა. სცადეთ თავიდან");

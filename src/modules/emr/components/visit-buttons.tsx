@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Play, UserX } from "lucide-react";
 import { toast } from "sonner";
+import { startNavigationProgress } from "@/components/navigation-progress";
 import { Button } from "@/components/ui/button";
 import { markNoShowAction, startEncounterAction } from "@/modules/emr/actions/encounter-actions";
 
@@ -24,6 +25,7 @@ export function StartVisitButton({ appointmentId, href }: { appointmentId: numbe
               return;
             }
             toast.success(res.message);
+            startNavigationProgress();
             router.push(href);
             router.refresh();
           } catch {

@@ -103,7 +103,7 @@ export function BookingLinks({ hrefs }: { hrefs: { followup: string; referral: s
   );
 }
 
-const EMPTY_RX = { drugName: "", dose: "", form: "", frequency: "", duration: "", note: "" };
+const EMPTY_RX = { drugName: "", dose: "", form: "", frequency: "", duration: "", note: "", quantity: "", rxNumber: "" };
 
 function Prescriptions({
   encounterId,
@@ -176,6 +176,11 @@ function Prescriptions({
                   <p className="text-muted-foreground">
                     {[p.dose, p.frequency, p.duration].filter(Boolean).join(" · ")}
                     {p.note && ` — ${p.note}`}
+                    {(p.quantity || p.rxNumber) && (
+                      <span className="block text-xs">
+                        {[p.quantity && `რაოდენობა: ${p.quantity}`, p.rxNumber && `რეცეპტი № ${p.rxNumber}`].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </p>
                 </div>
                 {editable && (
@@ -221,6 +226,12 @@ function Prescriptions({
             </FormField>
             <FormField id="rx-note" label="შენიშვნა" error={errors.note}>
               <Input id="rx-note" value={values.note} onChange={set("note")} placeholder="ჭამის შემდეგ" className="h-9" />
+            </FormField>
+            <FormField id="rx-quantity" label="რაოდენობა" error={errors.quantity}>
+              <Input id="rx-quantity" value={values.quantity} onChange={set("quantity")} inputMode="numeric" placeholder="1" className="h-9" />
+            </FormField>
+            <FormField id="rx-number" label="რეცეპტის ნომერი" error={errors.rxNumber}>
+              <Input id="rx-number" value={values.rxNumber} onChange={set("rxNumber")} className="h-9" />
             </FormField>
             <div className="sm:col-span-2 lg:col-span-3">
               <Button type="submit" disabled={pending}>

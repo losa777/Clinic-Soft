@@ -9,7 +9,7 @@ import { formatFileSize, MAX_FILE_SIZE } from "@/lib/patient-schema";
 import { type ProcedureDoneInput, procedureDoneSchema } from "@/modules/emr/schema";
 import { audit } from "@/modules/emr/server/audit";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
-import { notify } from "@/modules/emr/server/orders";
+import { notify } from "@/lib/notifications";
 
 /**
  * დანიშნულებების შესრულება: ლაბორანტი (orders.lab) — ლაბორატორიული/ინსტრუმენტული კვლევა; ექთანი (orders.nurse) —

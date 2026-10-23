@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { type SortingState, useTable } from "@tanstack/react-table";
 import { type AppColumnDef, tableFeatureSet } from "@/lib/table";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Activity, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { deleteSpecialty } from "./actions";
 import { SpecialtyDialog } from "./specialty-dialog";
@@ -48,7 +49,11 @@ export function SpecialtiesTable({ data }: { data: SpecialtyRow[] }) {
       {
         accessorKey: "name",
         header: "დასახელება",
-        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+        cell: ({ row }) => (
+          <Link href={`/admin/specialties/${row.original.id}`} className="font-medium hover:underline">
+            {row.original.name}
+          </Link>
+        ),
       },
       {
         accessorKey: "doctors",
@@ -60,9 +65,17 @@ export function SpecialtiesTable({ data }: { data: SpecialtyRow[] }) {
         id: "actions",
         header: () => <span className="sr-only">მოქმედებები</span>,
         enableSorting: false,
-        meta: { className: "w-24 text-right" },
+        meta: { className: "w-36 text-right" },
         cell: ({ row: { original: s } }) => (
           <div className="flex justify-end gap-1">
+            <Link
+              href={`/admin/specialties/${s.id}`}
+              className={buttonVariants({ variant: "ghost", size: "icon" })}
+              aria-label="მაჩვენებლები"
+              title="ვიზიტის მაჩვენებლები"
+            >
+              <Activity />
+            </Link>
             <Button variant="ghost" size="icon" onClick={() => openDialog(s)} aria-label="რედაქტირება" title="რედაქტირება">
               <Pencil />
             </Button>

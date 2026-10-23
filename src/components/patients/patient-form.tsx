@@ -1,5 +1,6 @@
 "use client";
 
+import { startNavigationProgress } from "@/components/navigation-progress";
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -246,6 +247,7 @@ export function PatientForm(props: Props) {
       if (patientHref && !record) {
         // Next.js ნანახ გვერდს მეხსიერებაში ინახავს — „ახალ პაციენტზე“ დაბრუნებისას ფორმა სუფთა უნდა იყოს
         clear();
+        startNavigationProgress();
         router.push(`${patientHref}/${res.record.id}`);
         return;
       }

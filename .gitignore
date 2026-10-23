@@ -30,6 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# სკანერის აგენტის ინსტალატორი (npm run scanner:build)
+/scanner-agent/dist/
+
+# პაციენტების ფაილები (storage/documents) — პერსონალური მონაცემები, git-ში არ შედის
+/storage/
+
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
