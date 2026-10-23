@@ -7,6 +7,8 @@ interface ClinicUserFields {
   roleName: string;
   /** როლის უფლებების კოდები (src/lib/permissions.ts) */
   permissions: string[];
+  /** შესვლის (სესიის) იდენტიფიკატორი — ჩატის კავშირებისთვის; ძველ სესიებს არ აქვს */
+  sid?: string;
 }
 
 declare module "next-auth" {

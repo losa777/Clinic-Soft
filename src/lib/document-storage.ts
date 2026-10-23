@@ -43,9 +43,14 @@ function resolveStoragePath(storagePath: string): string {
 
 /** ფაილის ჩაწერა ახალი სახელით; აბრუნებს ბაზაში შესანახ ფარდობით გზას. */
 export async function storeDocument(bytes: Uint8Array, mimeType: AcceptedMimeType): Promise<string> {
+  return storeFile(bytes, EXTENSIONS[mimeType]);
+}
+
+/** ფაილის ჩაწერა მოცემული გაფართოებით; prefix — ქვესაქაღალდე (მაგ. ჩატი: "chat" → `chat/2026/10/<uuid>.pdf`). */
+export async function storeFile(bytes: Uint8Array, extension: string, prefix?: string): Promise<string> {
   const now = new Date();
-  const dir = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const storagePath = `${dir}/${randomUUID()}.${EXTENSIONS[mimeType]}`;
+  const dir = `${prefix ? `${prefix}/` : ""}${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const storagePath = `${dir}/${randomUUID()}.${extension}`;
   const full = resolveStoragePath(storagePath);
   await mkdir(/*turbopackIgnore: true*/ path.dirname(full), { recursive: true });
   await writeFile(/*turbopackIgnore: true*/ full, bytes, { flag: "wx" });

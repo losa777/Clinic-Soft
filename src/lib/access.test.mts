@@ -28,6 +28,14 @@ describe("როლით წვდომა — მარშრუტები 
     assert.equal(routeRedirect("/doctorx", "doctor"), "/doctor");
   });
 
+  it("ჩატი (/chat) — ყველა შესული როლისთვის; შეუსვლელი → შესვლის გვერდი", () => {
+    for (const role of ["admin", "registrar", "doctor", "nurse", "lab", "accountant", "director"]) {
+      assert.equal(routeRedirect("/chat", role), null, role);
+    }
+    assert.equal(routeRedirect("/chat", null), "/login");
+    assert.equal(routeRedirect("/chatx", "doctor"), "/doctor");
+  });
+
   it("შესული მომხმარებელი /login-ზე → საკუთარ გვერდზე; API — თავად ამოწმებს", () => {
     assert.equal(routeRedirect("/login", "doctor"), "/doctor");
     assert.equal(routeRedirect("/api/notifications", null), null);

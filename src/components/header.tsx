@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth-actions";
 import { rolePath } from "@/lib/roles";
+import { ChatHeaderButton } from "@/modules/chat/components/chat-button";
 
 export function Header({ user }: { user: Session["user"] }) {
   return (
@@ -23,6 +24,7 @@ export function Header({ user }: { user: Session["user"] }) {
             </p>
             <p className="truncate text-xs text-muted-foreground">{user.roleName}</p>
           </div>
+          <ChatHeaderButton />
           <NotificationBell />
           <ThemeToggle />
           <form action={logout}>

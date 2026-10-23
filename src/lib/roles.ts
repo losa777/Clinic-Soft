@@ -33,7 +33,7 @@ export const PATIENT_EDITOR_ROLE: SystemRoleCode = "admin";
 export const ROLE_CODE_PATTERN = /^[a-z][a-z0-9-]{1,29}$/;
 
 /** კოდები, რომლებიც სისტემის მარშრუტებს ემთხვევა ან მომავლისთვისაა დაჯავშნილი. */
-export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public"];
+export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public", "chat"];
 
 /** როლის მთავარი გვერდის მისამართი. */
 export function rolePath(code: string): string {

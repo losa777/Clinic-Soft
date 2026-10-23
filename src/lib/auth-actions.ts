@@ -2,7 +2,8 @@
 
 import { AuthError } from "next-auth";
 import { z } from "zod";
-import { signIn, signOut } from "@/auth";
+import { auth, signIn, signOut } from "@/auth";
+import { endChatSessions } from "@/modules/chat/realtime/emit";
 
 const INVALID_CREDENTIALS = "მომხმარებელი ან პაროლი არასწორია";
 
@@ -40,5 +41,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
 }
 
 export async function logout() {
+  // ჩატი: ამ შესვლის კავშირები წყდება — სხვებთან „გასულია“ (თუ სხვა კომპიუტერზე შესული არ არის)
+  const session = await auth();
+  if (session?.user) endChatSessions(Number(session.user.id), "logout", session.user.sid);
   await signOut({ redirectTo: "/login" });
 }

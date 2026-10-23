@@ -91,6 +91,16 @@ model User {
   notifications        Notification[]
   auditLogs            AuditLog[]
 
+  conversationsCreated Conversation[]       @relation("ConversationCreatedBy")
+  chatMemberships      ConversationMember[]
+  messagesSent         Message[]            @relation("MessageSender")
+  messagesTargeted     Message[]            @relation("MessageTarget")
+  messageRevisions     MessageRevision[]
+  favorites            UserFavorite[]       @relation("FavoriteOwner")
+  favoritedBy          UserFavorite[]       @relation("FavoriteTarget")
+  presence             UserPresence?
+  chatSettings         UserChatSettings?
+
   @@index([roleId])
   @@map("users")
 }
@@ -1024,4 +1034,163 @@ model EncounterMeasurement {
   @@index([patientId, definitionId, encounterId], map: "idx_encounter_measurements_trend")
   @@index([definitionId])
   @@map("encounter_measurements")
+}
+
+// ─── შიდა ჩატი (src/modules/chat/) ───
+
+enum ConversationType {
+  direct
+  group
+}
+
+enum ConversationMemberRole {
+  owner
+  member
+}
+
+enum MessageKind {
+  text
+  system
+}
+
+enum MessageRevisionAction {
+  edit
+  delete
+}
+
+enum ManualPresenceStatus {
+  dnd
+}
+
+/// საუბარი. direct_key = "<მცირე id>:<დიდი id>" — ორ ადამიანს შორის ერთი პირადი საუბარი (ჯგუფში NULL).
+/// last_message_id/at — სიის დალაგება და ბოლო შეტყობინების ნაწყვეტი ერთი მოთხოვნით.
+model Conversation {
+  id            Int                  @id @default(autoincrement())
+  type          ConversationType
+  name          String?              @db.VarChar(100)
+  directKey     String?              @unique(map: "uq_conversations_direct_key") @map("direct_key") @db.VarChar(23)
+  createdById   Int?                 @map("created_by")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.DateTime(0)
+  lastMessageId BigInt?              @map("last_message_id")
+  lastMessageAt DateTime?            @map("last_message_at") @db.DateTime(0)
+  createdBy     User?                @relation("ConversationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  members       ConversationMember[]
+  messages      Message[]
+
+  @@index([createdById], map: "idx_conversations_created_by")
+  @@map("conversations")
+}
+
+/// საუბრის მონაწილე. წაუკითხავი = შეტყობინებები id > last_read_message_id (სხვისი). გასვლისას ჩანაწერი იშლება.
+/// cleared_message_id — „საუბრის წაშლა ჩემთვის“: ამ id-მდე შეტყობინებები მონაწილეს აღარ უჩანს (ბაზაში რჩება).
+model ConversationMember {
+  conversationId    Int                    @map("conversation_id")
+  userId            Int                    @map("user_id")
+  role              ConversationMemberRole @default(member)
+  joinedAt          DateTime               @default(now()) @map("joined_at") @db.DateTime(0)
+  lastReadMessageId BigInt                 @default(0) @map("last_read_message_id")
+  clearedMessageId  BigInt                 @default(0) @map("cleared_message_id")
+  muted             Boolean                @default(false)
+  pinned            Boolean                @default(false)
+  conversation      Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId], map: "idx_conversation_members_user")
+  @@map("conversation_members")
+}
+
+/// შეტყობინება. ფიზიკურად არ იშლება (deleted_at); ძველი ტექსტი — message_revisions.
+/// kind = system: ჯგუფის მოვლენა (event, target_user_id). client_id — კლიენტის UUID (განმეორებითი გაგზავნა დუბლიკატს არ ქმნის).
+model Message {
+  id             BigInt              @id @default(autoincrement())
+  conversationId Int                 @map("conversation_id")
+  senderId       Int                 @map("sender_id")
+  kind           MessageKind         @default(text)
+  body           String?             @db.Text
+  event          String?             @db.VarChar(30)
+  targetUserId   Int?                @map("target_user_id")
+  replyToId      BigInt?             @map("reply_to_id")
+  clientId       String?             @map("client_id") @db.Char(36)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  editedAt       DateTime?           @map("edited_at") @db.DateTime(0)
+  deletedAt      DateTime?           @map("deleted_at") @db.DateTime(0)
+  conversation   Conversation        @relation(fields: [conversationId], references: [id])
+  sender         User                @relation("MessageSender", fields: [senderId], references: [id])
+  targetUser     User?               @relation("MessageTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  replyTo        Message?            @relation("MessageReply", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies        Message[]           @relation("MessageReply")
+  attachments    MessageAttachment[]
+  revisions      MessageRevision[]
+
+  @@unique([senderId, clientId], map: "uq_messages_client")
+  @@index([conversationId, id], map: "idx_messages_conversation")
+  @@index([senderId], map: "idx_messages_sender")
+  @@index([replyToId], map: "idx_messages_reply_to")
+  @@index([targetUserId], map: "idx_messages_target_user")
+  @@map("messages")
+}
+
+/// შეტყობინების ტექსტის წინა ვერსია რედაქტირებისა და წაშლისას. მხოლოდ ემატება.
+model MessageRevision {
+  id        BigInt                @id @default(autoincrement())
+  messageId BigInt                @map("message_id")
+  action    MessageRevisionAction
+  oldBody   String?               @map("old_body") @db.Text
+  userId    Int?                  @map("user_id")
+  createdAt DateTime              @default(now()) @map("created_at") @db.DateTime(0)
+  message   Message               @relation(fields: [messageId], references: [id])
+  user      User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([messageId], map: "idx_message_revisions_message")
+  @@index([userId], map: "idx_message_revisions_user")
+  @@map("message_revisions")
+}
+
+/// მიმაგრებული ფაილი: თვითონ ფაილი დისკზეა (DOCUMENTS_DIR/chat/...), იკითხება მხოლოდ საუბრის მონაწილისთვის.
+model MessageAttachment {
+  id          BigInt  @id @default(autoincrement())
+  messageId   BigInt  @map("message_id")
+  fileName    String  @map("file_name") @db.VarChar(255)
+  mimeType    String  @map("mime_type") @db.VarChar(100)
+  size        Int
+  storagePath String  @map("storage_path") @db.VarChar(255)
+  width       Int?    @db.SmallInt
+  height      Int?    @db.SmallInt
+  message     Message @relation(fields: [messageId], references: [id])
+
+  @@index([messageId], map: "idx_message_attachments_message")
+  @@map("message_attachments")
+}
+
+model UserFavorite {
+  userId         Int      @map("user_id")
+  favoriteUserId Int      @map("favorite_user_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user           User     @relation("FavoriteOwner", fields: [userId], references: [id], onDelete: Cascade)
+  favoriteUser   User     @relation("FavoriteTarget", fields: [favoriteUserId], references: [id], onDelete: Cascade)
+
+  @@id([userId, favoriteUserId])
+  @@index([favoriteUserId], map: "idx_user_favorites_favorite")
+  @@map("user_favorites")
+}
+
+/// მიმდინარე სტატუსი სოკეტის კავშირებიდან ითვლება (მეხსიერებაში); აქ — „არ შემაწუხოთ“ და ბოლო აქტივობის/ყოფნის დრო.
+model UserPresence {
+  userId       Int                   @id @map("user_id")
+  manualStatus ManualPresenceStatus? @map("manual_status")
+  lastActiveAt DateTime?             @map("last_active_at") @db.DateTime(0)
+  lastSeenAt   DateTime?             @map("last_seen_at") @db.DateTime(0)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_presence")
+}
+
+model UserChatSettings {
+  userId               Int     @id @map("user_id")
+  soundEnabled         Boolean @default(true) @map("sound_enabled")
+  notificationsEnabled Boolean @default(true) @map("notifications_enabled")
+  user                 User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_chat_settings")
 }

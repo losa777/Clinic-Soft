@@ -835,6 +835,136 @@ async function createEmrTables() {
   `);
 }
 
+/**
+ * შიდა ჩატი. შეტყობინება ფიზიკურად არ იშლება (deleted_at), ცვლილებები/წაშლა — message_revisions-ში.
+ * BIGINT — მილიონობით შეტყობინებისთვის. წაუკითხავები ითვლება last_read_message_id-ით, ინდექსით (conversation_id, id).
+ */
+async function createChatTables() {
+  // direct_key = "<მცირე id>:<დიდი id>" — ორ ადამიანს შორის ერთი პირადი საუბარი (ჯგუფში NULL, UNIQUE არ ზღუდავს)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id              INT AUTO_INCREMENT PRIMARY KEY,
+      type            ENUM('direct', 'group') NOT NULL,
+      name            VARCHAR(100) NULL,
+      direct_key      VARCHAR(23)  NULL,
+      created_by      INT          NULL,
+      created_at      DATETIME     NOT NULL,
+      last_message_id BIGINT       NULL,
+      last_message_at DATETIME     NULL,
+      UNIQUE INDEX uq_conversations_direct_key (direct_key),
+      INDEX idx_conversations_created_by (created_by),
+      CONSTRAINT fk_conversations_created_by FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+  // ჯგუფიდან გასვლა/წაშლა — ჩანაწერი იშლება (საუბარი აღარ ჩანს), შეტყობინებები რჩება
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS conversation_members (
+      conversation_id      INT        NOT NULL,
+      user_id              INT        NOT NULL,
+      role                 ENUM('owner', 'member') NOT NULL DEFAULT 'member',
+      joined_at            DATETIME   NOT NULL,
+      last_read_message_id BIGINT     NOT NULL DEFAULT 0,
+      muted                TINYINT(1) NOT NULL DEFAULT 0,
+      pinned               TINYINT(1) NOT NULL DEFAULT 0,
+      PRIMARY KEY (conversation_id, user_id),
+      INDEX idx_conversation_members_user (user_id),
+      CONSTRAINT fk_conversation_members_conversation FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
+      CONSTRAINT fk_conversation_members_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+  // „საუბრის წაშლა ჩემთვის“: ამ id-მდე შეტყობინებები მონაწილეს აღარ უჩანს (ბაზაში რჩება)
+  await ensureColumn("conversation_members", "cleared_message_id", "BIGINT NOT NULL DEFAULT 0 AFTER last_read_message_id");
+  // kind = system: ჯგუფის მოვლენა (event: created/renamed/member_added/member_removed/member_left, target_user_id)
+  // client_id — კლიენტის UUID: ხელახლა გაგზავნა დუბლიკატს არ ქმნის
+  // sender_id-ზე RESTRICT: შეტყობინებების ავტორი არ იშლება (მხოლოდ ითიშება)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+      conversation_id INT         NOT NULL,
+      sender_id       INT         NOT NULL,
+      kind            ENUM('text', 'system') NOT NULL DEFAULT 'text',
+      body            TEXT        NULL,
+      event           VARCHAR(30) NULL,
+      target_user_id  INT         NULL,
+      reply_to_id     BIGINT      NULL,
+      client_id       CHAR(36)    NULL,
+      created_at      DATETIME(3) NOT NULL,
+      edited_at       DATETIME    NULL,
+      deleted_at      DATETIME    NULL,
+      INDEX idx_messages_conversation (conversation_id, id),
+      INDEX idx_messages_sender (sender_id),
+      INDEX idx_messages_reply_to (reply_to_id),
+      INDEX idx_messages_target_user (target_user_id),
+      UNIQUE INDEX uq_messages_client (sender_id, client_id),
+      CONSTRAINT fk_messages_conversation FOREIGN KEY (conversation_id) REFERENCES conversations (id),
+      CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users (id),
+      CONSTRAINT fk_messages_target_user FOREIGN KEY (target_user_id) REFERENCES users (id) ON DELETE SET NULL,
+      CONSTRAINT fk_messages_reply_to FOREIGN KEY (reply_to_id) REFERENCES messages (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  // ტექსტის წინა ვერსია ყოველ რედაქტირებასა და წაშლაზე (მხოლოდ ემატება)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS message_revisions (
+      id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+      message_id BIGINT   NOT NULL,
+      action     ENUM('edit', 'delete') NOT NULL,
+      old_body   TEXT     NULL,
+      user_id    INT      NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_message_revisions_message (message_id),
+      INDEX idx_message_revisions_user (user_id),
+      CONSTRAINT fk_message_revisions_message FOREIGN KEY (message_id) REFERENCES messages (id),
+      CONSTRAINT fk_message_revisions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+  // ფაილი დისკზეა (DOCUMENTS_DIR/chat/...), აქ მხოლოდ მეტამონაცემები; width/height — სურათის preview-სთვის
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+      message_id   BIGINT       NOT NULL,
+      file_name    VARCHAR(255) NOT NULL,
+      mime_type    VARCHAR(100) NOT NULL,
+      size         INT          NOT NULL,
+      storage_path VARCHAR(255) NOT NULL,
+      width        SMALLINT     NULL,
+      height       SMALLINT     NULL,
+      INDEX idx_message_attachments_message (message_id),
+      CONSTRAINT fk_message_attachments_message FOREIGN KEY (message_id) REFERENCES messages (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS user_favorites (
+      user_id          INT      NOT NULL,
+      favorite_user_id INT      NOT NULL,
+      created_at       DATETIME NOT NULL,
+      PRIMARY KEY (user_id, favorite_user_id),
+      INDEX idx_user_favorites_favorite (favorite_user_id),
+      CONSTRAINT chk_user_favorites_self CHECK (user_id <> favorite_user_id),
+      CONSTRAINT fk_user_favorites_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+      CONSTRAINT fk_user_favorites_favorite FOREIGN KEY (favorite_user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+  // მიმდინარე სტატუსი (აქტიური/არ არის კომპიუტერთან/გასულია) სოკეტის კავშირებიდან ითვლება მეხსიერებაში;
+  // აქ ინახება ხელით დაყენებული („არ შემაწუხოთ“) და ბოლო აქტივობა/ყოფნის დრო
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS user_presence (
+      user_id        INT      NOT NULL PRIMARY KEY,
+      manual_status  ENUM('dnd') NULL,
+      last_active_at DATETIME NULL,
+      last_seen_at   DATETIME NULL,
+      CONSTRAINT fk_user_presence_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS user_chat_settings (
+      user_id               INT        NOT NULL PRIMARY KEY,
+      sound_enabled         TINYINT(1) NOT NULL DEFAULT 1,
+      notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
+      CONSTRAINT fk_user_chat_settings_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
 async function createPermissionTables() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS permissions (
@@ -1136,6 +1266,7 @@ async function main() {
   await createFinanceTables();
   await createEmrTables();
   await createPermissionTables();
+  await createChatTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();

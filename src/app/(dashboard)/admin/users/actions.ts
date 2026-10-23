@@ -3,9 +3,11 @@
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { Prisma } from "@/generated/prisma/client";
 import { type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { endChatSessions } from "@/modules/chat/realtime/emit";
 
 const name = (label: string) =>
   z.string().trim().min(1, `შეიყვანეთ ${label}`).max(100, `${label} ძალიან გრძელია`);
@@ -110,6 +112,8 @@ export async function updateUser(input: UpdateUserInput): Promise<ActionResult> 
     if (isUniqueViolation(error)) return failure("მომხმარებელი უკვე არსებობს", USERNAME_TAKEN);
     throw error;
   }
+  // გათიშულს ჩატის კავშირი მაშინვე უწყდება (სხვა გვერდებზე — შემდეგ მოთხოვნაზე, auth.ts)
+  if (!data.isActive) endChatSessions(id, "deactivated");
   revalidatePath(PATH);
   return success("ცვლილებები შენახულია");
 }
@@ -123,6 +127,7 @@ export async function setUserActive(id: number, isActive: boolean): Promise<Acti
   if (blocked) return failure(blocked);
 
   await prisma.user.update({ where: { id }, data: { isActive } });
+  if (!isActive) endChatSessions(id, "deactivated");
   revalidatePath(PATH);
   return success(isActive ? "მომხმარებელი გააქტიურდა" : "მომხმარებელი გაითიშა");
 }
@@ -133,7 +138,16 @@ export async function deleteUser(id: number): Promise<ActionResult> {
   if (blocked) return failure(blocked);
   if (id === Number(me.id)) return failure("საკუთარ ანგარიშს ვერ წაშლით");
 
-  await prisma.user.delete({ where: { id } });
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch (error) {
+    // მომხმარებელს ჩანაწერები აქვს (მაგ. ჩატის შეტყობინებები — ისინი არ იშლება): წაშლის ნაცვლად — გათიშვა
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return failure("მომხმარებელს სისტემაში ჩანაწერები აქვს (მაგ. ჩატის შეტყობინებები) — წაშლის ნაცვლად გათიშეთ");
+    }
+    throw error;
+  }
+  endChatSessions(id, "deactivated");
   revalidatePath(PATH);
   return success("მომხმარებელი წაიშალა");
 }

@@ -54,7 +54,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) return { ...token, ...user, id: user.id! };
+      // sid — ამ შესვლის იდენტიფიკატორი: გასვლისას ჩატის მხოლოდ ამ შესვლის კავშირები წყდება (სხვა კომპიუტერზე — არა)
+      if (user) return { ...token, ...user, id: user.id!, sid: crypto.randomUUID() };
 
       // ყოველ მოთხოვნაზე ვამოწმებთ ბაზაში: გათიშული/წაშლილი მომხმარებელი მაშინვე გადის,
       // როლის ან სახელის ცვლილება კი მაშინვე აისახება სესიაში
@@ -69,6 +70,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.roleCode = token.roleCode;
       session.user.roleName = token.roleName;
       session.user.permissions = token.permissions ?? [];
+      session.user.sid = token.sid;
       return session;
     },
   },

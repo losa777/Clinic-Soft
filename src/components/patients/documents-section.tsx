@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { randomId } from "@/lib/browser-compat";
 import { deletePatientDocument } from "@/lib/patient-actions";
 import {
   ACCEPTED_MIME_TYPES,
@@ -77,7 +78,7 @@ export function DocumentsSection({ stored, pending, onPendingChange, onStoredDel
         const sameType = next.filter((d) => d.docType === docType).length + stored.filter((d) => d.docType === docType).length;
         const ext = EXTENSION_BY_TYPE[f.blob.type] ?? "jpg";
         next.push({
-          key: crypto.randomUUID(),
+          key: randomId(),
           blob: f.blob,
           url: URL.createObjectURL(f.blob),
           originalName: f.originalName ?? `scan-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${ext}`,
