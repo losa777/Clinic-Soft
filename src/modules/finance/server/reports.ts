@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { userWithRole } from "@/lib/user-roles";
 import { fromTetri } from "@/modules/finance/calc";
 import { FULL_ACCESS_ROLE } from "@/lib/permissions";
 import { dayRange, formatDateTime, fullName, int, tetri } from "./db";
@@ -119,9 +120,7 @@ export async function loadCashiers(): Promise<{ id: number; name: string }[]> {
   const users = await prisma.user.findMany({
     where: {
       isActive: true,
-      role: {
-        OR: [{ code: FULL_ACCESS_ROLE }, { permissions: { some: { permission: { code: "payments.create" } } } }],
-      },
+      ...userWithRole({ OR: [{ code: FULL_ACCESS_ROLE }, { permissions: { some: { permission: { code: "payments.create" } } } }] }),
     },
     select: { id: true, firstName: true, lastName: true },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],

@@ -39,7 +39,8 @@ export type AppointmentContext = {
 /**
  * პაციენტის ელექტრონული ჩანაწერი: ძირითადი მონაცემები (წასაკითხად), ალერგიები (წითლად, ზემოთ), სამედიცინო პროფილი,
  * ჩანართები: ვიზიტი, ისტორია, კვლევები, დანიშნულებები, დოკუმენტები. ყოველი ნახვა აუდიტში იწერება.
- * href — ამ ხედის მისამართი (?tab, ?hpage ბმულებისთვის), params — მიმდინარე URL პარამეტრები.
+ * href — ამ ხედის მისამართი (?tab, ?hpage ბმულებისთვის): ვიზიტი — /doctor/visits/<id>, პაციენტი — /doctor/patients/<id>;
+ * params — მიმდინარე URL პარამეტრები.
  */
 export async function PatientRecord({
   patientId,
@@ -81,12 +82,11 @@ export async function PatientRecord({
   const bookingHrefs = can(user, "appointments.book")
     ? { followup: doctorBookingHref(patientId, "followup"), referral: doctorBookingHref(patientId, "referral") }
     : null;
-  // ჩანართის ბმული: განრიგის ფილტრები რჩება, appointment/tab/hpage — თავიდან
+  // ჩანართის ბმული: სხვა პარამეტრები რჩება, tab/hpage — თავიდან (ვიზიტი მისამართშია — href)
   const keep = Object.fromEntries(
     Object.entries(params).filter(([key, v]) => typeof v === "string" && !["appointment", "tab", "hpage"].includes(key)),
   ) as Record<string, string>;
-  const tabHref = (tab: string, extra: Record<string, number> = {}) =>
-    withParams(href, { ...keep, ...(appointment ? { appointment: appointment.id } : {}), tab, ...extra });
+  const tabHref = (tab: string, extra: Record<string, number> = {}) => withParams(href, { ...keep, tab, ...extra });
 
   return (
     <div className="flex min-w-0 flex-col gap-4">

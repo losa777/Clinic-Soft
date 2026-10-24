@@ -40,7 +40,7 @@ export async function notifyArrival(db: Db, appointmentId: number) {
     type: "patient_arrived",
     title: `პაციენტი მობრძანდა: ${a.patient.firstName} ${a.patient.lastName}`,
     body: a.source === "walk_in" ? "ცოცხალი რიგი" : `ჯავშანი ${formatTime(a.startTime)}`,
-    link: `/doctor?appointment=${appointmentId}`,
+    link: `/doctor/visits/${appointmentId}`,
   });
 }
 

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { recordHasRole } from "@/lib/user-roles";
 import { timeOfDate } from "@/lib/doctor-schema";
 import { DoctorForm } from "./doctor-form";
 
@@ -20,11 +21,12 @@ async function loadDoctorUser(rawId: string) {
       lastName: true,
       isActive: true,
       role: { select: { code: true } },
+      extraRoles: { select: { role: { select: { code: true } } } },
       doctorProfile: { include: { schedules: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] } } },
     },
   });
   // ექიმის როლის მომხმარებელი ან ის, ვისაც პროფილი უკვე აქვს
-  if (!user || (user.role.code !== "doctor" && !user.doctorProfile)) notFound();
+  if (!user || (!recordHasRole(user, "doctor") && !user.doctorProfile)) notFound();
   return user;
 }
 
@@ -63,7 +65,7 @@ export default async function DoctorPage({ params }: PageProps<"/admin/doctors/[
       </div>
       <DoctorForm
         userId={user.id}
-        roleIsDoctor={user.role.code === "doctor"}
+        roleIsDoctor={recordHasRole(user, "doctor")}
         userActive={user.isActive}
         specialties={specialties}
         services={services.map((s) => ({

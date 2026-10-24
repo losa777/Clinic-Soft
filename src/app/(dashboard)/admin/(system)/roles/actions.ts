@@ -92,11 +92,12 @@ export async function setRolePermissions(input: z.input<typeof permissionsSchema
 
 export async function deleteRole(id: number): Promise<ActionResult> {
   const me = await requireRole("admin");
-  const role = await prisma.role.findUnique({ where: { id }, include: { _count: { select: { users: true } } } });
+  const role = await prisma.role.findUnique({ where: { id }, include: { _count: { select: { users: true, extraUsers: true } } } });
   if (!role) return failure("როლი ვერ მოიძებნა");
   if (isSystemRole(role.code)) return failure("სისტემური როლის წაშლა შეუძლებელია");
-  if (role._count.users > 0) {
-    return failure(`როლს ჰყავს ${role._count.users} მომხმარებელი — ჯერ გადაიყვანეთ ისინი სხვა როლზე`);
+  const userCount = role._count.users + role._count.extraUsers;
+  if (userCount > 0) {
+    return failure(`როლს ჰყავს ${userCount} მომხმარებელი (მთავარი ან დამატებითი როლით) — ჯერ მოხსენით ან გადაიყვანეთ სხვა როლზე`);
   }
 
   await prisma.role.delete({ where: { id } });

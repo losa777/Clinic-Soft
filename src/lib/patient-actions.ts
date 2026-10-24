@@ -21,7 +21,7 @@ import {
   personalIdSchema,
 } from "@/lib/patient-schema";
 import { can } from "@/lib/permissions";
-import { PATIENT_EDITOR_ROLE, PATIENT_REGISTRAR_ROLE, PATIENT_ROLES } from "@/lib/roles";
+import { hasRole, PATIENT_EDITOR_ROLE, PATIENT_REGISTRAR_ROLE, PATIENT_ROLES } from "@/lib/roles";
 import { type NewPatientPolicy, newPatientPolicySchema } from "@/modules/finance/schema";
 import { FinanceError } from "@/modules/finance/server/errors";
 import { createPatientPolicy } from "@/modules/finance/server/insurance";
@@ -108,8 +108,8 @@ export async function savePatient(formData: FormData): Promise<PatientSaveResult
   const me = await requireAnyRole(...PATIENT_ROLES);
   const userId = Number(me.id);
   const patientId = formData.get("patientId") ? Number(formData.get("patientId")) : null;
-  if (patientId !== null && me.roleCode !== PATIENT_EDITOR_ROLE) return failure(EDITOR_ONLY);
-  if (patientId === null && me.roleCode !== PATIENT_REGISTRAR_ROLE) return failure("ახალ პაციენტს არეგისტრირებს მხოლოდ რეგისტრატორი");
+  if (patientId !== null && !hasRole(me, PATIENT_EDITOR_ROLE)) return failure(EDITOR_ONLY);
+  if (patientId === null && !hasRole(me, PATIENT_REGISTRAR_ROLE)) return failure("ახალ პაციენტს არეგისტრირებს მხოლოდ რეგისტრატორი");
 
   let values: unknown;
   try {
@@ -217,7 +217,7 @@ export async function addPatientDocuments(formData: FormData): Promise<PatientSa
 /** დოკუმენტის წაშლა (მხოლოდ ადმინი): ჯერ ჩანაწერი, შემდეგ ფაილი. */
 export async function deletePatientDocument(id: number): Promise<ActionResult> {
   const me = await requireAnyRole(...PATIENT_ROLES);
-  if (me.roleCode !== PATIENT_EDITOR_ROLE) return failure("დოკუმენტს შლის მხოლოდ ადმინისტრატორი");
+  if (!hasRole(me, PATIENT_EDITOR_ROLE)) return failure("დოკუმენტს შლის მხოლოდ ადმინისტრატორი");
 
   const doc = await prisma.patientDocument.findUnique({
     where: { id },

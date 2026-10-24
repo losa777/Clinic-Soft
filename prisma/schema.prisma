@@ -15,9 +15,22 @@ model Role {
   code        String           @unique @db.VarChar(30)
   name        String           @db.VarChar(50)
   users       User[]
+  extraUsers  UserRole[]
   permissions RolePermission[]
 
   @@map("roles")
+}
+
+/// დამატებითი როლები (users.role_id — მთავარი). მომხმარებელს ყველა თავისი როლის გვერდი და უფლება აქვს.
+model UserRole {
+  userId Int  @map("user_id")
+  roleId Int  @map("role_id")
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "idx_user_roles_role")
+  @@map("user_roles")
 }
 
 /// უფლება (მაგ. invoices.create). სია: src/lib/permissions.ts; ბაზაში იწერება npm run db:setup-ით.
@@ -56,12 +69,15 @@ model User {
   firstName    String   @map("first_name") @db.VarChar(100)
   lastName     String   @map("last_name") @db.VarChar(100)
   roleId       Int      @map("role_id")
+  /// ბოლოს არჩეული როლი (რამდენიმე როლის მომხმარებელი); null ან მოხსნილი როლი — მთავარი
+  activeRoleId Int?     @map("active_role_id")
   isActive     Boolean  @default(true) @map("is_active")
   /// პაროლის შეცვლისას იზრდება — ძველი სესიები (JWT-ში sv) მაშინვე უქმდება
   sessionVersion    Int       @default(0) @map("session_version")
   passwordChangedAt DateTime? @map("password_changed_at") @db.DateTime(0)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
   role         Role     @relation(fields: [roleId], references: [id])
+  extraRoles   UserRole[]
 
   patientsCreated   Patient[]         @relation("PatientCreatedBy")
   patientsUpdated   Patient[]         @relation("PatientUpdatedBy")
@@ -951,6 +967,8 @@ model Notification {
 model AuditLog {
   id        BigInt   @id @default(autoincrement())
   userId    Int?     @map("user_id")
+  /// რომელი როლით შეასრულა (სესიის აქტიური როლი)
+  roleCode  String?  @map("role_code") @db.VarChar(30)
   action    String   @db.VarChar(30)
   entity    String   @db.VarChar(30)
   entityId  Int?     @map("entity_id")
@@ -1207,10 +1225,13 @@ model UserChatSettings {
 
 // ─── საწყობი (src/modules/inventory/) ───
 
+/// სამედიცინო: medication, consumable, reagent; სამეურნეო: stationery (საკანცელარიო), household (სამეურნეო)
 enum InventoryCategory {
   medication
   consumable
   reagent
+  stationery
+  household
 }
 
 /// receipt — შემოსავალი (+), consumption — გახარჯვა (−), writeoff — ჩამოწერა მიზეზით (−), adjustment — ინვენტარიზაცია (±)
@@ -1311,6 +1332,8 @@ model InventoryMovement {
   quantity       Decimal                  @db.Decimal(12, 2)
   reason         InventoryWriteoffReason?
   note           String?                  @db.VarChar(500)
+  /// ვის/სად გაიცა (სამეურნეო გაცემა: განყოფილება, კაბინეტი)
+  recipient      String?                  @db.VarChar(100)
   receiptId      Int?                     @map("receipt_id")
   patientId      Int?                     @map("patient_id")
   medicalOrderId Int?                     @map("medical_order_id")

@@ -91,6 +91,8 @@ export const consumeSchema = z.object({
   itemId: id("აირჩიეთ დასახელება"),
   quantity: quantity(),
   note: optionalText(500),
+  // ვის/სად გაიცა — სამეურნეო საქონელზე სავალდებულოა (მოწმდება სერვერზე, კატეგორიით)
+  recipient: optionalText(100).optional(),
 });
 
 export type ConsumeInput = z.input<typeof consumeSchema>;

@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { userWithRole } from "@/lib/user-roles";
 import {
   APPOINTMENTS_PAGE_SIZE,
   type AppointmentRow,
@@ -27,7 +28,7 @@ const timeToMinutes = (t: Date) => t.getUTCHours() * 60 + t.getUTCMinutes();
 const fullName = (u: { firstName: string; lastName: string }) => `${u.firstName} ${u.lastName}`;
 
 /** აქტიური ექიმი: პროფილიც და მომხმარებელიც აქტიურია, მომხმარებელს ისევ „ექიმის“ როლი აქვს. */
-const ACTIVE_DOCTOR = { isActive: true, user: { isActive: true, role: { code: "doctor" } } } satisfies Prisma.DoctorWhereInput;
+const ACTIVE_DOCTOR = { isActive: true, user: { isActive: true, ...userWithRole({ code: "doctor" }) } } satisfies Prisma.DoctorWhereInput;
 
 /** სპეციალობები (რომლებსაც აქტიური ექიმი ჰყავს) და აქტიური ექიმები — ჯავშნის ფორმისთვის. */
 export async function loadBookingOptions(): Promise<{ specialties: SpecialtyOption[]; doctors: BookingDoctor[] }> {

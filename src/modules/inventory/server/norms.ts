@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { MEDICAL_CATEGORIES } from "@/modules/inventory/labels";
 import { fromDecimal } from "@/modules/inventory/stock";
 import type { Db } from "./db";
 
@@ -14,7 +15,7 @@ export async function loadNorms(serviceIds: number[]): Promise<Map<number, NormL
   const result = new Map<number, NormLine[]>();
   if (serviceIds.length === 0) return result;
   const rows = await prisma.serviceMaterial.findMany({
-    where: { serviceId: { in: [...new Set(serviceIds)] }, item: { isActive: true } },
+    where: { serviceId: { in: [...new Set(serviceIds)] }, item: { isActive: true, category: { in: MEDICAL_CATEGORIES } } },
     include: { item: { select: { name: true, unit: true } } },
     orderBy: { item: { name: "asc" } },
   });

@@ -24,25 +24,35 @@ const dummyCompare = (password: string) => {
   return dummyHash.then((h) => bcrypt.compare(password, h));
 };
 
-/** სესიაში შესანახი ველები ბაზის ჩანაწერიდან. */
+const ROLE_WITH_PERMISSIONS = { include: { permissions: { select: { permission: { select: { code: true } } } } } } as const;
+
+/**
+ * სესიაში შესანახი ველები ბაზის ჩანაწერიდან. roles — მთავარი როლი პირველია, შემდეგ დამატებითები;
+ * roleCode/roleName — აქტიური (ბოლოს არჩეული) როლი; უფლებები — ყველა როლის ერთად.
+ */
 async function loadSessionUser(where: { id: number } | { username: string }) {
   const user = await prisma.user.findUnique({
     where,
-    include: { role: { include: { permissions: { select: { permission: { select: { code: true } } } } } } },
+    include: { role: ROLE_WITH_PERMISSIONS, extraRoles: { include: { role: ROLE_WITH_PERMISSIONS }, orderBy: { roleId: "asc" } } },
   });
   if (!user || !user.isActive) return null;
+  const roles = [user.role, ...user.extraRoles.map((r) => r.role).filter((r) => r.id !== user.roleId)];
+  const active = roles.find((r) => r.id === user.activeRoleId) ?? user.role;
   return {
     user,
     fields: {
       id: String(user.id),
       firstName: user.firstName,
       lastName: user.lastName,
-      roleCode: user.role.code,
-      roleName: user.role.name,
+      roleCode: active.code,
+      roleName: active.name,
+      roles: roles.map((r) => ({ code: r.code, name: r.name })),
       // პაროლის შეცვლისას იზრდება — ძველი სესიები უქმდება (jwt callback)
       sv: user.sessionVersion,
       // ადმინს ყველა უფლება აქვს (ბაზის მინიჭების მიუხედავად)
-      permissions: user.role.code === FULL_ACCESS_ROLE ? ALL_PERMISSIONS : user.role.permissions.map((p) => p.permission.code),
+      permissions: roles.some((r) => r.code === FULL_ACCESS_ROLE)
+        ? ALL_PERMISSIONS
+        : [...new Set(roles.flatMap((r) => r.permissions.map((p) => p.permission.code)))],
     },
   };
 }
@@ -84,7 +94,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
         await recordAttempt(username, ip, "success");
-        await audit({ userId: found.user.id, action: "login", entity: "session" });
+        await audit({ userId: found.user.id, roleCode: found.fields.roleCode, action: "login", entity: "session" });
         return found.fields;
       },
     }),
@@ -108,6 +118,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.lastName = token.lastName;
       session.user.roleCode = token.roleCode;
       session.user.roleName = token.roleName;
+      session.user.roles = token.roles ?? [{ code: token.roleCode, name: token.roleName }];
       session.user.permissions = token.permissions ?? [];
       session.user.sid = token.sid;
       return session;

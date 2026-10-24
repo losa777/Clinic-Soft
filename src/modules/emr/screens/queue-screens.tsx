@@ -11,6 +11,7 @@ import { loadQueue, type QueueRow } from "@/modules/emr/server/orders";
 import { Pager } from "@/modules/finance/components/filters";
 import { param, positiveInt, type SearchParams, withParams } from "@/modules/finance/params";
 import type { MaterialItem } from "@/modules/inventory/components/materials-editor";
+import { isMedical } from "@/modules/inventory/labels";
 import { loadNorms } from "@/modules/inventory/server/norms";
 import { loadStock } from "@/modules/inventory/server/stock";
 
@@ -35,7 +36,7 @@ export async function OrderQueueScreen({ kind, params, canConsume }: { kind: Kin
   const queue = await loadQueue({ types: c.types, statuses: view === "done" ? c.done : c.pending, page: positiveInt(params.page) ?? 1 });
   const active = view === "pending" && canConsume && queue.rows.length > 0;
   const [norms, stock] = active ? await Promise.all([loadNorms(queue.rows.map((r) => r.serviceId)), loadStock()]) : [null, null];
-  const items: MaterialItem[] = (stock ?? []).filter((i) => i.isActive).map((i) => ({ id: i.id, name: i.name, unit: i.unit, usable: i.usable }));
+  const items: MaterialItem[] = (stock ?? []).filter((i) => i.isActive && isMedical(i.category)).map((i) => ({ id: i.id, name: i.name, unit: i.unit, usable: i.usable }));
   const stockFor = (r: QueueRow): OrderStock => (norms ? { items, norm: norms.get(r.serviceId) ?? [] } : null);
   const viewHref = (v: string, page?: number) => withParams(c.home, { view: v === "pending" ? null : v, page: page && page > 1 ? page : null });
 

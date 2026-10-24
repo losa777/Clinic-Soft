@@ -3,7 +3,7 @@ import { auditOnce } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { readDocument } from "@/lib/document-storage";
 import { can } from "@/lib/permissions";
-import { PATIENT_ROLES } from "@/lib/roles";
+import { hasRole, PATIENT_ROLES } from "@/lib/roles";
 
 /**
  * პაციენტის დოკუმენტის ჩვენება/ჩამოტვირთვა. ფაილები ჯანმრთელობის პერსონალური მონაცემია:
@@ -14,7 +14,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/patient-docu
   if (!session?.user) return new Response("ავტორიზაცია საჭიროა", { status: 401 });
   // რეგისტრატურა/ადმინი, ექიმი (სამედიცინო ჩანაწერი) და ლაბორანტი (კვლევის შედეგი)
   const allowed =
-    (PATIENT_ROLES as string[]).includes(session.user.roleCode) || can(session.user, "emr.view") || can(session.user, "orders.lab");
+    hasRole(session.user, ...PATIENT_ROLES) || can(session.user, "emr.view") || can(session.user, "orders.lab");
   if (!allowed) return new Response("წვდომა აკრძალულია", { status: 403 });
 
   const id = Number((await ctx.params).id);

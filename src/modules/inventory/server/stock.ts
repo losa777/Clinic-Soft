@@ -3,7 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { addDays, tbilisiToDate, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
 import { formatDateTime, fullName } from "@/modules/finance/server/db";
-import type { InventoryCategoryValue, MovementTypeValue, WriteoffReasonValue } from "@/modules/inventory/labels";
+import { GENERAL_CATEGORIES, type GroupFilter, type InventoryCategoryValue, MEDICAL_CATEGORIES, type MovementTypeValue, type WriteoffReasonValue } from "@/modules/inventory/labels";
 import { expiryStatus, type ExpiryStatus, fromDecimal, stockLevel, type StockLevel } from "@/modules/inventory/stock";
 import { dateOnly } from "./db";
 
@@ -118,6 +118,8 @@ export type MovementRow = {
   quantity: number;
   reason: WriteoffReasonValue | null;
   note: string | null;
+  /** ვის/სად გაიცა (სამეურნეო) */
+  recipient: string | null;
   lotNumber: string | null;
   expiryDate: string | null;
   documentNumber: string | null;
@@ -147,6 +149,7 @@ function toMovementRow(m: MovementWithRelations): MovementRow {
     quantity: fromDecimal(m.quantity),
     reason: m.reason,
     note: m.note,
+    recipient: m.recipient,
     lotNumber: m.batch.lotNumber,
     expiryDate: dateOnly(m.batch.expiryDate),
     documentNumber: m.receipt?.documentNumber ?? null,
@@ -193,10 +196,16 @@ export async function loadItem(id: number) {
 export const MOVEMENTS_PAGE_SIZE = 50;
 const EXPORT_LIMIT = 50_000;
 
-export type MovementFilter = { from: string; to: string; type: MovementTypeValue | null; itemId: number | null; page: number };
+/** group — სამედიცინო/სამეურნეო (ექთანს/ლაბორანტს — ყოველთვის სამედიცინო, src/modules/inventory/access.ts). */
+export type MovementFilter = { from: string; to: string; type: MovementTypeValue | null; itemId: number | null; group: GroupFilter; page: number };
+
+/** ჯგუფის პირობა დასახელების კატეგორიაზე. */
+export const groupCategories = (group: GroupFilter) => (group === "medical" ? MEDICAL_CATEGORIES : group === "general" ? GENERAL_CATEGORIES : null);
 
 function movementWhere(f: MovementFilter): Prisma.InventoryMovementWhereInput {
+  const categories = groupCategories(f.group);
   return {
+    ...(categories ? { item: { category: { in: categories } } } : {}),
     // პერიოდი თბილისის დღეებით
     createdAt: { gte: tbilisiToDate(f.from, 0), lt: tbilisiToDate(addDays(f.to, 1), 0) },
     ...(f.type ? { type: f.type } : {}),

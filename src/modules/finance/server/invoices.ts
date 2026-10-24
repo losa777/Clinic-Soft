@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
+import { userWithRole } from "@/lib/user-roles";
 import { notifyArrival } from "@/lib/notifications";
 import { calcLine, fromTetri, invoiceDebt, invoiceStatus, type LineAmounts, netPaid, sumLines, toTetri } from "@/modules/finance/calc";
 import type { z } from "zod";
@@ -58,7 +59,7 @@ export async function loadInvoiceFormData({
     loadBillableServices(prisma),
     loadActivePolicy(prisma, pid),
     prisma.user.findMany({
-      where: { isActive: true, role: { code: "doctor" } },
+      where: { isActive: true, ...userWithRole({ code: "doctor" }) },
       select: { id: true, firstName: true, lastName: true, doctorProfile: { select: { id: true } } },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     }),
@@ -127,7 +128,7 @@ export async function createInvoice(
       await notifyArrival(tx, input.appointmentId);
     }
   } else if (doctorId) {
-    const doctor = await tx.user.findFirst({ where: { id: doctorId, isActive: true, role: { code: "doctor" } } });
+    const doctor = await tx.user.findFirst({ where: { id: doctorId, isActive: true, ...userWithRole({ code: "doctor" }) } });
     if (!doctor) throw new FinanceError("ექიმი ვერ მოიძებნა ან გათიშულია", { doctorId: "ექიმი ვერ მოიძებნა" });
     doctorName = fullName(doctor);
     if (options.queueWalkIn !== false) appointmentId = await queueWalkIn(tx, input.patientId, doctorId, userId);

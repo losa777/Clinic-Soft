@@ -23,6 +23,7 @@ export default async function UsersPage() {
         isActive: true,
         createdAt: true,
         role: { select: { id: true, code: true, name: true } },
+        extraRoles: { select: { role: { select: { id: true, name: true } } }, orderBy: { roleId: "asc" } },
       },
       orderBy: { id: "asc" },
     }),
@@ -39,6 +40,7 @@ export default async function UsersPage() {
     lockedUntil: locks.has(u.username.toLowerCase()) ? formatTime(locks.get(u.username.toLowerCase())!) : null,
     roleId: u.role.id,
     roleName: u.role.name,
+    extraRoles: u.extraRoles.map((r) => ({ id: r.role.id, name: r.role.name })),
     createdAt: u.createdAt.getTime(),
     createdAtLabel: dateFormat.format(u.createdAt),
   }));

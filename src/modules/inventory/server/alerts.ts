@@ -1,8 +1,10 @@
 import "server-only";
 import { addDays, formatDate, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
+import { FULL_ACCESS_ROLE } from "@/lib/permissions";
+import { userWithRole } from "@/lib/user-roles";
 import { notify } from "@/lib/notifications";
-import { inventoryRoutesFor, itemUrl } from "@/modules/inventory/routes";
+import { INVENTORY_ROUTES, inventoryRoutesFor, itemUrl } from "@/modules/inventory/routes";
 import { EXPIRY_WARNING_DAYS, formatQuantity } from "@/modules/inventory/stock";
 import type { Db } from "./db";
 
@@ -12,16 +14,18 @@ import type { Db } from "./db";
  */
 
 async function managers(db: Db): Promise<{ id: number; roleCode: string }[]> {
-  return db.$queryRaw<{ id: number; roleCode: string }[]>`
-    SELECT u.id, r.code AS roleCode
-    FROM users u JOIN roles r ON r.id = u.role_id
-    WHERE u.is_active = 1 AND (
-      r.code = 'admin' OR EXISTS (
-        SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
-        WHERE rp.role_id = r.id AND p.code = 'inventory.manage'
-      )
-    )
-  `;
+  // მთავარი ან დამატებითი როლით (user_roles); ბმულისთვის — ის როლი, რომელსაც საწყობის გვერდი აქვს (საწყობი → ადმინი → სხვა)
+  const users = await db.user.findMany({
+    where: {
+      isActive: true,
+      ...userWithRole({ OR: [{ code: FULL_ACCESS_ROLE }, { permissions: { some: { permission: { code: "inventory.manage" } } } }] }),
+    },
+    select: { id: true, role: { select: { code: true } }, extraRoles: { select: { role: { select: { code: true } } } } },
+  });
+  return users.map((u) => {
+    const codes = [u.role.code, ...u.extraRoles.map((r) => r.role.code)];
+    return { id: u.id, roleCode: Object.keys(INVENTORY_ROUTES).find((code) => codes.includes(code)) ?? u.role.code };
+  });
 }
 
 /** ნაშთი ზღვარს ქვემოთ ჩამოვიდა (მხოლოდ გადაკვეთისას — ყოველ გახარჯვაზე არა). */

@@ -68,12 +68,17 @@ const include = {
   patient: { select: { firstName: true, lastName: true, personalId: true } },
 } satisfies Prisma.AuditLogInclude;
 
-function toRow(r: Prisma.AuditLogGetPayload<{ include: typeof include }>): AuditRow {
+/** როლის კოდი → სახელი: ჩანაწერში ის როლი ჩანს, რომლითაც მოქმედება შესრულდა (ძველ ჩანაწერებში — მთავარი როლი). */
+async function roleNames(): Promise<Map<string, string>> {
+  return new Map((await prisma.role.findMany({ select: { code: true, name: true } })).map((r) => [r.code, r.name]));
+}
+
+function toRow(r: Prisma.AuditLogGetPayload<{ include: typeof include }>, roles: Map<string, string>): AuditRow {
   return {
     id: String(r.id),
     at: formatDateTime(r.createdAt),
     user: fullName(r.user),
-    role: r.user?.role.name ?? null,
+    role: (r.roleCode && roles.get(r.roleCode)) ?? r.user?.role.name ?? null,
     userId: r.userId,
     action: r.action,
     entity: r.entity,
@@ -91,13 +96,16 @@ export async function listAudit(f: AuditFilter) {
   const count = await prisma.auditLog.count({ where: w });
   const pageCount = Math.max(1, Math.ceil(count / AUDIT_PAGE_SIZE));
   const page = Math.min(f.page, pageCount);
-  const rows = await prisma.auditLog.findMany({ where: w, include, orderBy: { id: "desc" }, skip: (page - 1) * AUDIT_PAGE_SIZE, take: AUDIT_PAGE_SIZE });
-  return { rows: rows.map(toRow), count, page, pageCount };
+  const [rows, roles] = await Promise.all([
+    prisma.auditLog.findMany({ where: w, include, orderBy: { id: "desc" }, skip: (page - 1) * AUDIT_PAGE_SIZE, take: AUDIT_PAGE_SIZE }),
+    roleNames(),
+  ]);
+  return { rows: rows.map((r) => toRow(r, roles)), count, page, pageCount };
 }
 
 export async function exportAudit(f: AuditFilter) {
-  const rows = await prisma.auditLog.findMany({ where: where(f), include, orderBy: { id: "desc" }, take: EXPORT_LIMIT });
-  return rows.map(toRow);
+  const [rows, roles] = await Promise.all([prisma.auditLog.findMany({ where: where(f), include, orderBy: { id: "desc" }, take: EXPORT_LIMIT }), roleNames()]);
+  return rows.map((r) => toRow(r, roles));
 }
 
 /** ფილტრებისთვის: თანამშრომლები (გათიშულიც — ძველ ჩანაწერებში ჩანან), ჟურნალში არსებული ობიექტები და მოქმედებები. */

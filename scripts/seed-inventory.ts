@@ -1,5 +1,5 @@
 /**
- * საწყობის სატესტო მონაცემები: კატალოგი (მედიკამენტი, სახარჯი, რეაგენტი), 2 მომწოდებელი, შემოსავლები, სერვისების ნორმები,
+ * საწყობის სატესტო მონაცემები: კატალოგი (მედიკამენტი, სახარჯი, რეაგენტი; ცალკე — სამეურნეო/საკანცელარიო), მომწოდებლები, შემოსავლები, სერვისების ნორმები,
  * გახარჯვა, ჩამოწერა და ერთი ვადაგასული პარტია — ნაშთების, გაფრთხილებების და მოძრაობების სანახავად.
  * ოპერაციები იმავე ფუნქციებით, რასაც აპლიკაცია იყენებს (FEFO, ჩაკეტვა, მოძრაობები).
  * იდემპოტენტურია: თუ კატალოგში რომელიმე სატესტო დასახელება უკვე არის — არაფერს აკეთებს.
@@ -7,11 +7,12 @@
  */
 import { addDays, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
+import type { InventoryCategoryValue } from "@/modules/inventory/labels";
 import { dateValue, inventoryTx } from "@/modules/inventory/server/db";
 import { consume, createReceipt, writeOff } from "@/modules/inventory/server/operations";
 import { parseQuantity } from "@/modules/inventory/stock";
 
-type Category = "medication" | "consumable" | "reagent";
+type Category = InventoryCategoryValue;
 
 const ITEMS: [name: string, category: Category, unit: string, min: string, tracksExpiry: boolean][] = [
   ["შპრიცი 5 მლ", "consumable", "ცალი", "100", false],
@@ -39,6 +40,66 @@ const NORMS: [service: string, materials: [item: string, quantity: string][]][] 
   ["გლუკოზა სისხლში", [["გლუკოზის ტესტ-ზოლები", "1"], ["ხელთათმანი ნიტრილის (M)", "1"], ["სპირტიანი ხელსახოცი", "1"]]],
 ];
 
+/** სამეურნეო და საკანცელარიო (ვადის გარეშე; სადეზინფექციო — ვადით): გაიცემა განყოფილებებზე. */
+const GENERAL_ITEMS: [name: string, category: Category, unit: string, min: string, tracksExpiry: boolean][] = [
+  ["ქაღალდი A4 (500 ფურცელი)", "stationery", "შეფუთვა", "5", false],
+  ["კალამი (ლურჯი)", "stationery", "ცალი", "20", false],
+  ["ტონერი პრინტერისთვის", "stationery", "ცალი", "1", false],
+  ["ნაგვის პარკი 60 ლ", "household", "რულონი", "5", false],
+  ["ქაღალდის ხელსახოცი", "household", "რულონი", "10", false],
+  ["სადეზინფექციო ხსნარი ზედაპირისთვის 1 ლ", "household", "ფლაკონი", "4", true],
+];
+
+/** სამეურნეო ნაწილი ცალკე — არსებულ ბაზაშიც ემატება (თუ ჯერ არ არის). */
+async function seedGeneral(userId: number) {
+  if (await prisma.inventoryItem.count({ where: { name: { in: GENERAL_ITEMS.map((i) => i[0]) } } })) return;
+  const today = tbilisiToday();
+  const now = new Date();
+  const ids: Record<string, number> = {};
+  for (const [name, category, unit, min, tracksExpiry] of GENERAL_ITEMS) {
+    ids[name] = (await prisma.inventoryItem.create({ data: { name, category, unit, minQuantity: min, tracksExpiry, createdAt: now, updatedAt: now } })).id;
+  }
+  const supplier = await prisma.inventorySupplier.upsert({
+    where: { name: "შპს „ოფისსაპლაი“ (სატესტო)" },
+    create: { name: "შპს „ოფისსაპლაი“ (სატესტო)", taxId: "404000003", createdAt: now },
+    update: {},
+  });
+  const line = (name: string, quantity: string, cost: string, expiry: number | null = null) => ({
+    itemId: ids[name],
+    quantity: q(quantity),
+    lotNumber: null,
+    expiryDate: expiry === null ? null : addDays(today, expiry),
+    unitCost: cost,
+  });
+  await inventoryTx((tx) =>
+    createReceipt(tx, userId, {
+      supplierId: supplier.id,
+      documentNumber: "OS-114",
+      receivedOn: addDays(today, -7),
+      note: null,
+      lines: [
+        line("ქაღალდი A4 (500 ფურცელი)", "20", "14.50"),
+        line("კალამი (ლურჯი)", "100", "0.60"),
+        line("ტონერი პრინტერისთვის", "2", "85.00"),
+        line("ნაგვის პარკი 60 ლ", "30", "3.20"),
+        line("ქაღალდის ხელსახოცი", "40", "2.40"),
+        line("სადეზინფექციო ხსნარი ზედაპირისთვის 1 ლ", "12", "9.80", 365),
+      ],
+    }),
+  );
+  const give: [string, string, string][] = [
+    ["ქაღალდი A4 (500 ფურცელი)", "4", "რეგისტრატურა"],
+    ["კალამი (ლურჯი)", "15", "რეგისტრატურა"],
+    ["ტონერი პრინტერისთვის", "1", "ბუღალტერია"],
+    ["ნაგვის პარკი 60 ლ", "8", "დამლაგებელი"],
+    ["სადეზინფექციო ხსნარი ზედაპირისთვის 1 ლ", "3", "პროცედურების კაბინეტი"],
+  ];
+  for (const [name, quantity, recipient] of give) {
+    await inventoryTx((tx) => consume(tx, userId, { itemId: ids[name], quantity: q(quantity), note: null, recipient, allowGeneral: true }));
+  }
+  console.log(`✔ საწყობი: ${GENERAL_ITEMS.length} სამეურნეო/საკანცელარიო დასახელება`);
+}
+
 /** ნორმები — მხოლოდ თუ ჯერ არცერთი არ არის (ადმინის ცვლილებები არ გადაიწერება). */
 async function seedNorms() {
   if (await prisma.serviceMaterial.count()) return;
@@ -55,12 +116,14 @@ async function seedNorms() {
 }
 
 async function main() {
+  const manager = await prisma.user.findFirstOrThrow({ where: { role: { code: { in: ["warehouse", "admin"] } }, isActive: true }, select: { id: true } });
   if (await prisma.inventoryItem.count({ where: { name: { in: ITEMS.map((i) => i[0]) } } })) {
     await seedNorms();
+    await seedGeneral(manager.id);
     console.log("✔ საწყობი: სატესტო მონაცემები უკვე არსებობს");
     return;
   }
-  const admin = await prisma.user.findFirstOrThrow({ where: { role: { code: { in: ["warehouse", "admin"] } }, isActive: true }, select: { id: true } });
+  const admin = manager;
   const today = tbilisiToday();
   const now = new Date();
 
@@ -136,6 +199,7 @@ async function main() {
 
   console.log(`✔ საწყობი: ${ITEMS.length} დასახელება, 2 მომწოდებელი, შემოსავლები, გახარჯვა და ჩამოწერა`);
   await seedNorms();
+  await seedGeneral(admin.id);
 }
 
 main()

@@ -21,11 +21,22 @@ import { MovementList } from "@/modules/inventory/components/movement-list";
 import { NormsEditor } from "@/modules/inventory/components/norms-editor";
 import { ReceiptForm } from "@/modules/inventory/components/receipt-form";
 import { StockTable } from "@/modules/inventory/components/stock-table";
-import { CATEGORY_LABELS, MOVEMENT_TYPES, type MovementTypeValue, STOCK_STATUSES, type StockStatusFilter } from "@/modules/inventory/labels";
+import { managesGeneral, seesCategory, seesGeneral } from "@/modules/inventory/access";
+import {
+  CATEGORY_LABELS,
+  GROUP_FILTERS,
+  type GroupFilter,
+  isMedical,
+  MEDICAL_CATEGORIES,
+  MOVEMENT_TYPES,
+  type MovementTypeValue,
+  STOCK_STATUSES,
+  type StockStatusFilter,
+} from "@/modules/inventory/labels";
 import { type InventoryRoutes, itemUrl } from "@/modules/inventory/routes";
 import { dateOnly } from "@/modules/inventory/server/db";
 import { loadNormServices } from "@/modules/inventory/server/norms";
-import { listMovements, loadItem, loadPickerData, loadStock } from "@/modules/inventory/server/stock";
+import { groupCategories, listMovements, loadItem, loadPickerData, loadStock } from "@/modules/inventory/server/stock";
 import { expiryStatus, formatQuantity, fromDecimal, inputQuantity } from "@/modules/inventory/stock";
 
 /**
@@ -55,8 +66,15 @@ function ActionLink({ href, children, variant = "default" }: { href: string; chi
   );
 }
 
+/** ?group= — სამედიცინო/სამეურნეო; სამეურნეოს უფლების გარეშე — მხოლოდ სამედიცინო. */
+function groupParam(user: User, params: SearchParams): GroupFilter {
+  if (!seesGeneral(user)) return "medical";
+  const g = param(params.group);
+  return GROUP_FILTERS.some((x) => x.value === g) ? (g as GroupFilter) : "all";
+}
+
 export async function StockScreen({ routes, user, params }: { routes: InventoryRoutes; user: User; params: SearchParams }) {
-  const rows = await loadStock();
+  const rows = (await loadStock()).filter((r) => seesCategory(user, r.category));
   const status = STOCK_STATUSES.some((s) => s.value === param(params.status)) ? (param(params.status) as StockStatusFilter) : "all";
   const active = rows.filter((r) => r.isActive);
   const low = active.filter((r) => r.level !== "ok").length;
@@ -81,7 +99,15 @@ export async function StockScreen({ routes, user, params }: { routes: InventoryR
           </ActionLink>
         )}
       </Header>
-      <StockTable rows={rows} routes={routes} showValue={can(user, "inventory.reports")} initialStatus={status} />
+      <StockTable
+        rows={rows}
+        routes={routes}
+        showValue={can(user, "inventory.reports")}
+        initialStatus={status}
+        initialGroup={groupParam(user, params)}
+        showGroups={seesGeneral(user)}
+        writeoffHref={routes.issue && can(user, "inventory.manage") ? routes.issue : null}
+      />
     </section>
   );
 }
@@ -92,6 +118,7 @@ export async function ItemScreen({ routes, user, rawId }: { routes: InventoryRou
   const data = await loadItem(id);
   if (!data) notFound();
   const { stock, batches, movements } = data;
+  if (!seesCategory(user, stock.category)) notFound();
   const writeoffHref = routes.issue && can(user, "inventory.manage") ? routes.issue : null;
   const showCost = can(user, "inventory.reports");
   return (
@@ -137,7 +164,7 @@ export async function ItemScreen({ routes, user, rawId }: { routes: InventoryRou
                 <TableHead className="hidden text-right sm:table-cell">მიღებული</TableHead>
                 <TableHead className="hidden md:table-cell">მიღება</TableHead>
                 {showCost && <TableHead className="hidden text-right md:table-cell">ერთ. ფასი</TableHead>}
-                {writeoffHref && <TableHead className="w-10" />}
+                {writeoffHref && <TableHead className="w-28" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -164,11 +191,13 @@ export async function ItemScreen({ routes, user, rawId }: { routes: InventoryRou
                     <TableCell>
                       <Link
                         href={withParams(writeoffHref, { mode: "writeoff", item: id, batch: b.id })}
-                        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "text-destructive hover:text-destructive")}
-                        aria-label="ჩამოწერა"
-                        title="ჩამოწერა"
+                        className={cn(
+                          buttonVariants({ variant: b.expiry === "expired" ? "destructive" : "ghost", size: "sm" }),
+                          b.expiry !== "expired" && "text-destructive hover:text-destructive",
+                        )}
                       >
                         <Trash2 />
+                        ჩამოწერა
                       </Link>
                     </TableCell>
                   )}
@@ -210,7 +239,7 @@ export async function ReceiveScreen({ routes }: { routes: InventoryRoutes }) {
   const { items, suppliers } = await loadPickerData();
   return (
     <section className="flex flex-col gap-4">
-      <Header title="შემოსავალი" description="მომწოდებლისგან მიღებული მედიკამენტი და მასალა. ყოველი ხაზი ახალი პარტიაა (სერია, ვადა, ფასი)." />
+      <Header title="შემოსავალი" description="მომწოდებლისგან მიღებული საქონელი — სამედიცინოც და სამეურნეოც. ყოველი ხაზი ახალი პარტიაა (სერია, ვადა, ფასი)." />
       {items.length === 0 ? (
         <p className="rounded-xl border p-6 text-center text-sm text-muted-foreground">
           კატალოგი ცარიელია. ჯერ დაამატეთ დასახელებები
@@ -236,7 +265,8 @@ export async function IssueScreen({ user, params }: { user: User; params: Search
   const [stock, batches] = await Promise.all([
     loadStock(),
     prisma.inventoryBatch.findMany({
-      where: { quantity: { gt: 0 }, item: { isActive: true } },
+      // სამეურნეოს გასცემს მხოლოდ საწყობი/ადმინი
+      where: { quantity: { gt: 0 }, item: { isActive: true, ...(managesGeneral(user) ? {} : { category: { in: MEDICAL_CATEGORIES } }) } },
       select: { id: true, itemId: true, lotNumber: true, expiryDate: true, quantity: true },
       orderBy: [{ expiryDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
     }),
@@ -244,7 +274,9 @@ export async function IssueScreen({ user, params }: { user: User; params: Search
   const modes = [can(user, "inventory.consume") && ("consume" as const), can(user, "inventory.manage") && ("writeoff" as const)].filter(
     (m): m is "consume" | "writeoff" => Boolean(m),
   );
-  const items: IssueItem[] = stock.filter((r) => r.isActive).map((r) => ({ id: r.id, name: r.name, unit: r.unit, usable: r.usable, total: r.total }));
+  const items: IssueItem[] = stock
+    .filter((r) => r.isActive && (isMedical(r.category) || managesGeneral(user)))
+    .map((r) => ({ id: r.id, name: r.name, unit: r.unit, usable: r.usable, total: r.total, medical: isMedical(r.category) }));
   const issueBatches: IssueBatch[] = batches.map((b) => {
     const expiryDate = dateOnly(b.expiryDate);
     return { id: b.id, itemId: b.itemId, lotNumber: b.lotNumber, expiryDate, expiry: expiryStatus(expiryDate, today), quantity: fromDecimal(b.quantity) };
@@ -257,7 +289,9 @@ export async function IssueScreen({ user, params }: { user: User; params: Search
         title={modes.length > 1 ? "გახარჯვა და ჩამოწერა" : modes[0] === "writeoff" ? "ჩამოწერა" : "გახარჯვა"}
         description="ყოველი ოპერაცია მოძრაობების ჟურნალში იწერება (ვინ, როდის, რამდენი) და არ იშლება."
       />
+      {/* key: ბმულიდან გადმოსვლისას (mode/item/batch) ფორმა თავიდან იქმნება — კლიენტური ნავიგაცია წინა მდგომარეობას არ ინარჩუნებს */}
       <IssueForm
+        key={[mode, itemId, positiveInt(params.batch)].join("-")}
         items={items}
         batches={issueBatches}
         modes={modes}
@@ -274,11 +308,13 @@ export async function MovementsScreen({ routes, user, params }: { routes: Invent
   const type = MOVEMENT_TYPES.some((t) => t.value === param(params.type)) ? (param(params.type) as MovementTypeValue) : null;
   const itemId = positiveInt(params.item);
   const page = positiveInt(params.page) ?? 1;
+  const group = groupParam(user, params);
+  const categories = groupCategories(group);
   const [result, items] = await Promise.all([
-    listMovements({ ...period, type, itemId, page }),
-    prisma.inventoryItem.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    listMovements({ ...period, type, itemId, group, page }),
+    prisma.inventoryItem.findMany({ where: categories ? { category: { in: categories } } : {}, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
-  const query = { from: period.from, to: period.to, type, item: itemId };
+  const query = { from: period.from, to: period.to, type, item: itemId, group: group === "all" ? null : group };
   return (
     <section className="flex flex-col gap-4">
       <Header title="მოძრაობები" description={`${formatDate(period.from)} — ${formatDate(period.to)} · ${result.count} ჩანაწერი`}>
@@ -291,6 +327,11 @@ export async function MovementsScreen({ routes, user, params }: { routes: Invent
         <FilterField label="მდე">
           <DateInput name="to" value={period.to} />
         </FilterField>
+        {seesGeneral(user) && (
+          <FilterField label="ჯგუფი">
+            <NativeSelect name="group" value={group} options={[...GROUP_FILTERS]} />
+          </FilterField>
+        )}
         <FilterField label="ოპერაცია">
           <NativeSelect name="type" value={type ?? ""} options={[{ value: "", label: "ყველა" }, ...MOVEMENT_TYPES]} />
         </FilterField>
@@ -337,7 +378,7 @@ export async function CatalogScreen() {
     <section className="flex flex-col gap-4">
       <Header
         title="კატალოგი"
-        description="მედიკამენტები, სახარჯი მასალა და რეაგენტები. დასახელება არ იშლება — ითიშება (ისტორია რჩება)."
+        description="სამედიცინო (მედიკამენტი, სახარჯი მასალა, რეაგენტი) და სამეურნეო (საკანცელარიო, სამეურნეო) საქონელი. დასახელება არ იშლება — ითიშება (ისტორია რჩება)."
       >
         <Badge variant="secondary">{items.filter((i) => i.isActive).length} აქტიური</Badge>
       </Header>
@@ -349,7 +390,8 @@ export async function CatalogScreen() {
 export async function NormsScreen() {
   const [services, items] = await Promise.all([
     loadNormServices(),
-    prisma.inventoryItem.findMany({ where: { isActive: true }, select: { id: true, name: true, unit: true }, orderBy: { name: "asc" } }),
+    // ნორმაში — მხოლოდ სამედიცინო (სამეურნეო პაციენტზე/პროცედურაზე არ იხარჯება)
+    prisma.inventoryItem.findMany({ where: { isActive: true, category: { in: MEDICAL_CATEGORIES } }, select: { id: true, name: true, unit: true }, orderBy: { name: "asc" } }),
   ]);
   return (
     <section className="flex flex-col gap-4">

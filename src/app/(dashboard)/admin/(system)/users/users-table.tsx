@@ -29,8 +29,11 @@ export type UserRow = {
   isActive: boolean;
   /** შესვლა დროებით დაბლოკილია (წარუმატებელი ცდები) — „HH:MM-მდე“ */
   lockedUntil: string | null;
+  /** მთავარი როლი */
   roleId: number;
   roleName: string;
+  /** დამატებითი როლები */
+  extraRoles: { id: number; name: string }[];
   createdAt: number;
   createdAtLabel: string;
 };
@@ -122,8 +125,18 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
         id: "role",
         header: "როლი",
         accessorFn: (u) => u.roleName,
-        filterFn: (row, _id, roleId: number) => row.original.roleId === roleId,
-        cell: ({ row }) => <Badge variant="secondary">{row.original.roleName}</Badge>,
+        // ფილტრი — მთავარი ან დამატებითი როლით
+        filterFn: (row, _id, roleId: number) => row.original.roleId === roleId || row.original.extraRoles.some((r) => r.id === roleId),
+        cell: ({ row: { original: u } }) => (
+          <div className="flex flex-wrap gap-1">
+            <Badge variant="secondary">{u.roleName}</Badge>
+            {u.extraRoles.map((r) => (
+              <Badge key={r.id} variant="outline" title="დამატებითი როლი">
+                {r.name}
+              </Badge>
+            ))}
+          </div>
+        ),
       },
       {
         id: "status",

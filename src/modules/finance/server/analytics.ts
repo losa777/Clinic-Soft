@@ -4,6 +4,7 @@ import { addDays, OFFSET_MINUTES } from "@/lib/appointment-slots";
 import { bucketKeys, type Grouping, groupingFor } from "@/modules/finance/analytics-format";
 import { prisma } from "@/lib/db";
 import { fromTetri, type Tetri } from "@/modules/finance/calc";
+import { MEDICAL_CATEGORIES } from "@/modules/inventory/labels";
 import { int, periodRange, tetri } from "./db";
 
 /**
@@ -25,8 +26,12 @@ export type Totals = {
   cash: string;
   card: string;
   refunds: string;
-  /** საწყობი: გახარჯული მასალის თვითღირებულება და ჩამოწერის ზარალი (შესყიდვის ფასით); null — უფლების გარეშე */
+  /**
+   * საწყობი (შესყიდვის ფასით; null — უფლების გარეშე): materials — სამედიცინო მასალის ხარჯი,
+   * supplies — სამეურნეო/საკანცელარიო გაცემა, writeoffs — ჩამოწერის ზარალი (ორივე ჯგუფი)
+   */
   materials: string | null;
+  supplies: string | null;
   writeoffs: string | null;
 };
 
@@ -73,10 +78,11 @@ async function loadTotals(from: string, to: string, withInventory: boolean): Pro
       GROUP BY p.type, p.method
     `,
     withInventory
-      ? prisma.$queryRaw<{ materials: unknown; writeoffs: unknown }[]>`
-          SELECT SUM(CASE WHEN m.type = 'consumption' THEN -m.quantity * COALESCE(b.unit_cost, 0) END) AS materials,
+      ? prisma.$queryRaw<{ materials: unknown; supplies: unknown; writeoffs: unknown }[]>`
+          SELECT SUM(CASE WHEN m.type = 'consumption' AND it.category IN (${Prisma.join(MEDICAL_CATEGORIES)}) THEN -m.quantity * COALESCE(b.unit_cost, 0) END) AS materials,
+                 SUM(CASE WHEN m.type = 'consumption' AND it.category NOT IN (${Prisma.join(MEDICAL_CATEGORIES)}) THEN -m.quantity * COALESCE(b.unit_cost, 0) END) AS supplies,
                  SUM(CASE WHEN m.type = 'writeoff' THEN -m.quantity * COALESCE(b.unit_cost, 0) END) AS writeoffs
-          FROM inventory_movements m JOIN inventory_batches b ON b.id = m.batch_id
+          FROM inventory_movements m JOIN inventory_batches b ON b.id = m.batch_id JOIN inventory_items it ON it.id = m.item_id
           WHERE m.created_at >= ${r.from} AND m.created_at < ${r.to} AND m.type IN ('consumption', 'writeoff')
         `
       : Promise.resolve([null]),
@@ -99,6 +105,7 @@ async function loadTotals(from: string, to: string, withInventory: boolean): Pro
     card: fromTetri(sum("payment", "card") - sum("refund", "card")),
     refunds: fromTetri(sum("refund")),
     materials: inventory ? cost(inventory.materials) : null,
+    supplies: inventory ? cost(inventory.supplies) : null,
     writeoffs: inventory ? cost(inventory.writeoffs) : null,
   };
 }

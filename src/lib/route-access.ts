@@ -3,14 +3,19 @@
  * აბრუნებს გადამისამართების მისამართს ან null-ს (გაგრძელება). სუფთა ფუნქცია — ტესტებისთვის.
  * API მისამართები აქ არ მოწმდება: თითოეული თავად ამოწმებს სესიას და უფლებას (401/403).
  * გამონაკლისი: SHARED_SECTIONS (/chat, /account — პაროლის შეცვლა) — ყველა შესული მომხმარებლისთვის, როლის მიუხედავად.
+ * roleCode — აქტიური როლი (სხვა როლის გვერდიდან აქ გადადის); roleCodes — მომხმარებლის ყველა როლი (მთავარი + დამატებითი).
  */
 const SHARED_SECTIONS = ["chat", "account"];
 
-export function routeRedirect(pathname: string, roleCode: string | null | undefined): string | null {
+export function routeRedirect(
+  pathname: string,
+  roleCode: string | null | undefined,
+  roleCodes: string[] = roleCode ? [roleCode] : [],
+): string | null {
   if (pathname.startsWith("/api/")) return null;
   if (pathname === "/login") return roleCode ? `/${roleCode}` : null;
   if (!roleCode) return "/login";
   const section = pathname.split("/")[1];
   if (SHARED_SECTIONS.includes(section)) return null;
-  return section === roleCode ? null : `/${roleCode}`;
+  return section === roleCode || roleCodes.includes(section) ? null : `/${roleCode}`;
 }

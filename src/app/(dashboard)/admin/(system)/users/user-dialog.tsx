@@ -48,6 +48,7 @@ function UserForm({ user, roles, isSelf, onDone }: Omit<Props, "open" | "onOpenC
     username: user?.username ?? "",
     password: "",
     roleId: user ? String(user.roleId) : "",
+    extraRoleIds: user?.extraRoles.map((r) => r.id) ?? [],
     isActive: user?.isActive ?? true,
   });
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -60,7 +61,8 @@ function UserForm({ user, roles, isSelf, onDone }: Omit<Props, "open" | "onOpenC
   function submit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      const payload = { ...values, roleId: Number(values.roleId) };
+      // მთავარი როლი დამატებითებში არ მეორდება
+      const payload = { ...values, roleId: Number(values.roleId), extraRoleIds: values.extraRoleIds.filter((id) => String(id) !== values.roleId) };
       const res = user ? await updateUser({ ...payload, id: user.id }) : await createUser(payload);
       setResult(res);
       if (res.ok) {
@@ -108,7 +110,7 @@ function UserForm({ user, roles, isSelf, onDone }: Omit<Props, "open" | "onOpenC
         <Input {...input("password")} type="password" autoComplete="new-password" />
       </FormField>
 
-      <FormField id="user-role" label="როლი" error={errors.roleId} hint={isSelf ? "საკუთარ როლს ვერ შეცვლით" : undefined}>
+      <FormField id="user-role" label="მთავარი როლი" error={errors.roleId} hint={isSelf ? "საკუთარ მთავარ როლს ვერ შეცვლით" : "შესვლისას ეს როლი იხსნება"}>
         <Select
           items={roles}
           value={values.roleId || null}
@@ -127,6 +129,12 @@ function UserForm({ user, roles, isSelf, onDone }: Omit<Props, "open" | "onOpenC
           </SelectContent>
         </Select>
       </FormField>
+
+      <ExtraRoles
+        roles={roles.filter((r) => r.value !== values.roleId)}
+        selected={values.extraRoleIds}
+        onChange={(ids) => set("extraRoleIds", ids)}
+      />
 
       <div className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
         <div>
@@ -147,5 +155,29 @@ function UserForm({ user, roles, isSelf, onDone }: Omit<Props, "open" | "onOpenC
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/** დამატებითი როლები: მომხმარებელი ყველა თავის როლს ხედავს და ზედა პანელიდან მათ შორის გადადის. */
+function ExtraRoles({ roles, selected, onChange }: { roles: RoleOption[]; selected: number[]; onChange: (ids: number[]) => void }) {
+  const toggle = (id: number, on: boolean) => onChange(on ? [...selected, id] : selected.filter((x) => x !== id));
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="text-sm font-medium">დამატებითი როლები</legend>
+      <p className="text-xs text-muted-foreground">არასავალდებულო — მაგ. რეგისტრატორი, რომელიც საწყობსაც მართავს</p>
+      <ul className="mt-1 flex max-h-44 flex-col divide-y overflow-y-auto rounded-lg border">
+        {roles.map((r) => {
+          const id = Number(r.value);
+          return (
+            <li key={r.value}>
+              <label className="flex items-center gap-3 px-3 py-2 text-sm">
+                <Switch checked={selected.includes(id)} onCheckedChange={(on) => toggle(id, on)} />
+                {r.label}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </fieldset>
   );
 }

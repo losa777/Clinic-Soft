@@ -1,13 +1,12 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, CircleDot, Hourglass, UserRound } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
+import { ArrowLeft, CircleDot, Hourglass, UserRound } from "lucide-react";
 import type { Session } from "next-auth";
 import type { AppointmentStatus } from "@/generated/prisma/client";
 import { AppointmentStatusBadge } from "@/components/appointments/appointment-status-badge";
 import { PatientSearchInput } from "@/components/patients/patient-search-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { APPOINTMENT_STATUSES } from "@/lib/appointment-schema";
 import { addDays, formatDate, isoWeekday, tbilisiToday, weekdayName } from "@/lib/appointment-slots";
 import { SEARCH_LIMIT, searchPatients } from "@/lib/patient-records";
@@ -21,6 +20,10 @@ type User = Session["user"];
 
 export const DOCTOR_HOME = "/doctor";
 export const DOCTOR_PATIENTS = "/doctor/patients";
+export const DOCTOR_VISITS = "/doctor/visits";
+
+/** ვიზიტის გვერდი (პაციენტის ბარათი მთელ სიგანეზე); tab — ჩანართი (visit, studies, orders...). */
+export const visitUrl = (appointmentId: number, tab?: string) => withParams(`${DOCTOR_VISITS}/${appointmentId}`, { tab });
 
 const STATUS_FILTER = [{ value: "", label: "ყველა სტატუსი" }, ...APPOINTMENT_STATUSES];
 const VIEWS = [
@@ -29,10 +32,13 @@ const VIEWS = [
 ];
 
 /**
- * ექიმის მთავარი ეკრანი: მარცხნივ დღის (ან კვირის) ვიზიტები — თარიღი და სტატუსის ფილტრი;
- * მარჯვნივ არჩეული ვიზიტის პაციენტის ბარათი (?appointment=). მხოლოდ საკუთარი ჯავშნები.
+ * ექიმის მთავარი ეკრანი: დღის (ან კვირის) ვიზიტები — თარიღი და სტატუსის ფილტრი; მომლოდინეები ზემოთ.
+ * ვიზიტზე დაჭერით პაციენტის ბარათი ცალკე გვერდზე იხსნება (visitUrl). მხოლოდ საკუთარი ჯავშნები.
+ * ძველი მისამართი ?appointment=<id> (შეტყობინებებში) — გადამისამართდება ვიზიტის გვერდზე.
  */
 export async function DoctorHomeScreen({ user, params }: { user: User; params: SearchParams }) {
+  const legacy = positiveInt(params.appointment);
+  if (legacy) redirect(withParams(`${DOCTOR_VISITS}/${legacy}`, { tab: param(params.tab) || null, hpage: param(params.hpage) || null }));
   const userId = Number(user.id);
   const profile = await loadDoctorProfile(userId);
   if (!profile) {
@@ -51,14 +57,8 @@ export async function DoctorHomeScreen({ user, params }: { user: User; params: S
   const from = view === "week" ? addDays(date, 1 - isoWeekday(date)) : date;
   const rows = await loadSchedule({ doctorId: profile.id, from, days: view === "week" ? 7 : 1, status });
 
-  // არჩეული ვიზიტი: შეიძლება სხვა დღისაც იყოს (ბმულიდან) — მხოლოდ საკუთარი
-  const selectedId = positiveInt(params.appointment);
-  const selected = selectedId ? await loadOwnAppointment(selectedId, userId) : null;
-  if (selectedId && !selected) notFound();
-
   const filters = { date: date === today ? null : date, view: view === "day" ? null : view, status };
-  const rowHref = (id: number) => withParams(DOCTOR_HOME, { ...filters, appointment: id });
-  const selectedRowId = selected?.context.id ?? null;
+  const rowHref = (id: number) => visitUrl(id);
   // მომლოდინეები („მობრძანდა“, მათ შორის ცოცხალი რიგი) — ზემოთ, მოსვლის მიხედვით; დანარჩენი — დროის მიხედვით
   const waiting = rows
     .filter((r) => r.status === "arrived")
@@ -67,8 +67,7 @@ export async function DoctorHomeScreen({ user, params }: { user: User; params: S
   const rest = rows.filter((r) => r.status !== "arrived");
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
-      <aside className="flex flex-col gap-3">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
         <div>
           <h1 className="text-lg font-semibold">
             {view === "week" ? `კვირა: ${formatDate(from)} — ${formatDate(addDays(from, 6))}` : `${formatDate(date)}, ${weekdayName(date)}`}
@@ -108,27 +107,15 @@ export async function DoctorHomeScreen({ user, params }: { user: User; params: S
               <Hourglass className="size-4" />
               მომლოდინე: {waiting.length}
             </p>
-            <ScheduleList rows={waiting} selectedId={selectedRowId} grouped={false} href={rowHref} />
+            <ScheduleList rows={waiting} grouped={false} href={rowHref} />
           </div>
         )}
-        <ScheduleList rows={rest} selectedId={selectedRowId} grouped={view === "week"} href={rowHref} />
-      </aside>
-
-      <section className="min-w-0">
-        {selected ? (
-          <PatientRecord patientId={selected.patientId} user={user} appointment={selected.context} href={DOCTOR_HOME} params={params} />
-        ) : (
-          <Card>
-            <CardContent className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
-              <CalendarDays className="size-8" />
-              აირჩიეთ ვიზიტი სიიდან — გაიხსნება პაციენტის ბარათი.
-              <Link href={DOCTOR_PATIENTS} className="text-sm text-primary hover:underline">
-                ან მოძებნეთ პაციენტი
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-      </section>
+        <ScheduleList rows={rest} grouped={view === "week"} href={rowHref} />
+      {rows.length === 0 && (
+        <Link href={DOCTOR_PATIENTS} className="text-center text-sm text-primary hover:underline">
+          პაციენტის მოძებნა
+        </Link>
+      )}
     </div>
   );
 }
@@ -137,12 +124,10 @@ const KIND_LABEL = { first: "პირველადი", repeat: "განმ
 
 function ScheduleList({
   rows,
-  selectedId,
   grouped,
   href,
 }: {
   rows: ScheduleRow[];
-  selectedId: number | null;
   grouped: boolean;
   href: (id: number) => string;
 }) {
@@ -162,11 +147,8 @@ function ScheduleList({
               <li key={r.id}>
                 <Link
                   href={href(r.id)}
-                  scroll={false}
-                  aria-current={r.id === selectedId ? "true" : undefined}
                   className={cn(
                     "flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm transition-colors hover:border-primary",
-                    r.id === selectedId && "border-primary bg-primary/5 ring-1 ring-primary",
                     (r.status === "cancelled" || r.status === "no_show") && "opacity-60",
                   )}
                 >
@@ -260,5 +242,29 @@ export async function DoctorPatientScreen({ user, rawId, params }: { user: User;
       </Link>
       <PatientRecord patientId={id} user={user} appointment={null} href={`${DOCTOR_PATIENTS}/${id}`} params={params} />
     </section>
+  );
+}
+
+/**
+ * ვიზიტის გვერდი: პაციენტის ბარათი მთელ სიგანეზე (ვიზიტის ფორმა, ისტორია, კვლევები, დანიშნულებები, დოკუმენტები).
+ * მხოლოდ საკუთარი ჯავშანი; უკან — იმ დღის განრიგზე.
+ */
+export async function DoctorVisitScreen({ user, rawId, params }: { user: User; rawId: string; params: SearchParams }) {
+  const id = Number(rawId);
+  if (!Number.isInteger(id) || id <= 0) notFound();
+  const visit = await loadOwnAppointment(id, Number(user.id));
+  if (!visit) notFound();
+  const date = visit.context.date;
+  return (
+    <div className="flex flex-col gap-3">
+      <Link
+        href={withParams(DOCTOR_HOME, { date: date === tbilisiToday() ? null : date })}
+        className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground print:hidden"
+      >
+        <ArrowLeft className="size-4" />
+        დღის განრიგი · {formatDate(date)}, {visit.context.start}
+      </Link>
+      <PatientRecord patientId={visit.patientId} user={user} appointment={visit.context} href={visitUrl(id)} params={params} />
+    </div>
   );
 }

@@ -48,6 +48,38 @@ const batchQuantities = async (tx: Tx, itemId: number) =>
 describe("საწყობი", () => {
   after(() => prisma.$disconnect());
 
+  it("სამეურნეო: გაცემა მხოლოდ საწყობიდან, „ვის/სად“ სავალდებულოა; პაციენტზე/პროცედურაზე — არა", async () => {
+    await inRollback(async (tx) => {
+      const { userId } = await setup(tx);
+      const now = new Date();
+      const item = await tx.inventoryItem.create({
+        data: { name: `ტესტი ${randomUUID().slice(0, 8)}`, category: "stationery", unit: "ცალი", minQuantity: "0", tracksExpiry: false, createdAt: now, updatedAt: now },
+      });
+      await createReceipt(tx, userId, {
+        supplierId: null,
+        documentNumber: null,
+        receivedOn: today,
+        note: null,
+        lines: [{ itemId: item.id, quantity: 5000, lotNumber: null, expiryDate: null, unitCost: "0.50" }],
+      });
+      const isError = (field?: string) => (e: unknown) => e instanceof InventoryError && (!field || Boolean(e.fieldErrors?.[field]));
+      // ექთანი/ლაბორანტი (allowGeneral-ის გარეშე)
+      await assert.rejects(consume(tx, userId, { itemId: item.id, quantity: 100, note: null, recipient: "რეგისტრატურა" }), isError());
+      // მიმღების გარეშე
+      await assert.rejects(consume(tx, userId, { itemId: item.id, quantity: 100, note: null, allowGeneral: true }), isError("recipient"));
+      // პაციენტზე — არა
+      const patient = await tx.patient.findFirstOrThrow({ select: { id: true } });
+      await assert.rejects(
+        consume(tx, userId, { itemId: item.id, quantity: 100, note: null, recipient: "x", patientId: patient.id, allowGeneral: true }),
+        isError(),
+      );
+      await consume(tx, userId, { itemId: item.id, quantity: 300, note: null, recipient: "რეგისტრატურა", allowGeneral: true });
+      const move = await tx.inventoryMovement.findFirstOrThrow({ where: { itemId: item.id, type: "consumption" } });
+      assert.equal(move.recipient, "რეგისტრატურა");
+      assert.deepEqual(await batchQuantities(tx, item.id), [4700]);
+    });
+  });
+
   it("შემოსავალი: პარტიები და მოძრაობები; ვადა სავალდებულოა, ვადაგასული არ მიიღება", async () => {
     await inRollback(async (tx) => {
       const { userId, item } = await setup(tx);

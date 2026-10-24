@@ -4,7 +4,8 @@ import { routeRedirect } from "@/lib/route-access";
 
 // ყველა დაცული მისამართი როლზეა მიბმული: /<როლის_კოდი>/... (წესები — src/lib/route-access.ts)
 export default auth((req) => {
-  const target = routeRedirect(req.nextUrl.pathname, req.auth?.user?.roleCode);
+  const user = req.auth?.user;
+  const target = routeRedirect(req.nextUrl.pathname, user?.roleCode, user?.roles?.map((r) => r.code));
   return target ? NextResponse.redirect(new URL(target, req.nextUrl)) : NextResponse.next();
 });
 

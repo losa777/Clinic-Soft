@@ -5,6 +5,7 @@ import { type ActionFailure, failure, invalid } from "@/lib/action-result";
 import { isoWeekday, tbilisiParts } from "@/lib/appointment-slots";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { recordHasRole } from "@/lib/user-roles";
 import { dateOfTime, type DoctorInput, doctorSchema, parseTime, type ScheduleInterval } from "@/lib/doctor-schema";
 
 export type DoctorSaveResult = { ok: true; message: string; outsideSchedule: number } | ActionFailure;
@@ -31,12 +32,12 @@ export async function saveDoctor(input: DoctorInput): Promise<DoctorSaveResult> 
   const { userId, schedule, ...profile } = parsed.data;
 
   const [user, specialty, service] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } } } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } }, extraRoles: { select: { role: { select: { code: true } } } } } }),
     prisma.specialty.count({ where: { id: profile.specialtyId } }),
     profile.consultationServiceId ? prisma.service.count({ where: { id: profile.consultationServiceId, isActive: true } }) : 1,
   ]);
   if (!user) return failure("მომხმარებელი ვერ მოიძებნა");
-  if (user.role.code !== "doctor") return failure("პროფილი შეიძლება მიენიჭოს მხოლოდ „ექიმის“ როლის მომხმარებელს");
+  if (!recordHasRole(user, "doctor")) return failure("პროფილი შეიძლება მიენიჭოს მხოლოდ „ექიმის“ როლის მომხმარებელს");
   if (!specialty) return failure("შეასწორეთ მონიშნული ველები", { specialtyId: "სპეციალობა ვერ მოიძებნა" });
   if (!service) return failure("შეასწორეთ მონიშნული ველები", { consultationServiceId: "სერვისი ვერ მოიძებნა ან გათიშულია" });
 

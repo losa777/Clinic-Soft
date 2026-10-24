@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "როლები" };
 export default async function RolesPage() {
   await requireRole("admin");
   const roles = await prisma.role.findMany({
-    include: { _count: { select: { users: true } }, permissions: { select: { permission: { select: { code: true } } } } },
+    include: { _count: { select: { users: true, extraUsers: true } }, permissions: { select: { permission: { select: { code: true } } } } },
     orderBy: { id: "asc" },
   });
 
@@ -19,7 +19,8 @@ export default async function RolesPage() {
     id: r.id,
     code: r.code,
     name: r.name,
-    userCount: r._count.users,
+    // მთავარი და დამატებითი როლით
+    userCount: r._count.users + r._count.extraUsers,
     isSystem: isSystemRole(r.code),
     permissions: r.permissions.map((p) => p.permission.code),
   }));

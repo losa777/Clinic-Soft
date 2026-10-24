@@ -1,6 +1,6 @@
 import { tbilisiToday } from "@/lib/appointment-slots";
 import { apiPermission, csvResponse } from "@/modules/finance/server/csv";
-import { CATEGORY_LABELS } from "@/modules/inventory/labels";
+import { CATEGORY_LABELS, isMedical } from "@/modules/inventory/labels";
 import { loadStock } from "@/modules/inventory/server/stock";
 import { inputQuantity } from "@/modules/inventory/stock";
 
@@ -11,9 +11,10 @@ export async function GET() {
   const rows = await loadStock();
   return csvResponse(
     `stock-${tbilisiToday()}.csv`,
-    ["დასახელება", "კატეგორია", "ერთეული", "ვარგისი ნაშთი", "ვადაგასული", "მინიმუმი", "უახლოესი ვადა", "ღირებულება (₾)", "სტატუსი"],
+    ["დასახელება", "ჯგუფი", "კატეგორია", "ერთეული", "ვარგისი ნაშთი", "ვადაგასული", "მინიმუმი", "უახლოესი ვადა", "ღირებულება (₾)", "სტატუსი"],
     rows.map((r) => [
       r.name,
+      isMedical(r.category) ? "სამედიცინო" : "სამეურნეო",
       CATEGORY_LABELS[r.category],
       r.unit,
       inputQuantity(r.usable),

@@ -19,6 +19,7 @@ function details(m: MovementRow) {
     m.reason ? REASON_LABELS[m.reason] : null,
     m.type === "receipt" ? [m.supplier, m.documentNumber && `ზედნ. ${m.documentNumber}`].filter(Boolean).join(", ") || null : null,
     m.patient ? `პაციენტი: ${m.patient}` : null,
+    m.recipient ? `გაიცა: ${m.recipient}` : null,
     m.note,
   ];
   return parts.filter(Boolean).join(" · ");

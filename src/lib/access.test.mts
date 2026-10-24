@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ALL_PERMISSIONS, can, DEFAULT_ROLE_PERMISSIONS, type PermissionCode } from "./permissions.ts";
+import { hasRole } from "./roles.ts";
 import { routeRedirect } from "./route-access.ts";
 
 const user = (roleCode: string) => ({ roleCode, permissions: (DEFAULT_ROLE_PERMISSIONS as Record<string, PermissionCode[]>)[roleCode] ?? [] });
@@ -41,6 +42,28 @@ describe("როლით წვდომა — მარშრუტები 
   it("შესული მომხმარებელი /login-ზე → საკუთარ გვერდზე; API — თავად ამოწმებს", () => {
     assert.equal(routeRedirect("/login", "doctor"), "/doctor");
     assert.equal(routeRedirect("/api/notifications", null), null);
+  });
+
+  it("რამდენიმე როლი: ყველა თავისი როლის გვერდი ღიაა, სხვა → აქტიური როლის გვერდზე", () => {
+    const roles = ["registrar", "warehouse"];
+    assert.equal(routeRedirect("/registrar/patients", "registrar", roles), null);
+    assert.equal(routeRedirect("/warehouse/receive", "registrar", roles), null);
+    assert.equal(routeRedirect("/admin", "registrar", roles), "/registrar");
+    assert.equal(routeRedirect("/doctor", "warehouse", roles), "/warehouse");
+    assert.equal(routeRedirect("/login", "warehouse", roles), "/warehouse");
+  });
+});
+
+describe("როლით წვდომა — hasRole (მთავარი + დამატებითი)", () => {
+  const multi = { roleCode: "registrar", roles: [{ code: "registrar", name: "" }, { code: "warehouse", name: "" }] };
+  it("ნებისმიერი თავისი როლი ითვლება, აქტიურის მიუხედავად", () => {
+    assert.ok(hasRole(multi, "warehouse"));
+    assert.ok(hasRole(multi, "admin", "registrar"));
+    assert.ok(!hasRole(multi, "admin"));
+  });
+  it("ძველი სესია (roles-ის გარეშე) — მხოლოდ roleCode", () => {
+    assert.ok(hasRole({ roleCode: "doctor" }, "doctor"));
+    assert.ok(!hasRole({ roleCode: "doctor" }, "nurse"));
   });
 });
 

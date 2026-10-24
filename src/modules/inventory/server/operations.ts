@@ -1,5 +1,6 @@
 import "server-only";
 import { tbilisiToday } from "@/lib/appointment-slots";
+import { type InventoryCategoryValue, isMedical } from "@/modules/inventory/labels";
 import { allocateFefo, formatQuantity, fromDecimal, isExpired, toDecimal, usableQuantity } from "@/modules/inventory/stock";
 import { notifyLowStock } from "./alerts";
 import { type Db, dateOnly, dateValue, InventoryError } from "./db";
@@ -73,15 +74,15 @@ export async function createReceipt(tx: Db, userId: number, data: ReceiptData): 
 
 /** დასახელება და მისი ნაშთიანი პარტიები, ჩაკეტილი ტრანზაქციის ბოლომდე. */
 async function lockItem(tx: Db, itemId: number) {
-  const [item] = await tx.$queryRaw<{ id: number; name: string; unit: string; min_quantity: unknown; is_active: unknown }[]>`
-    SELECT id, name, unit, min_quantity, is_active FROM inventory_items WHERE id = ${itemId} FOR UPDATE
+  const [item] = await tx.$queryRaw<{ id: number; name: string; unit: string; category: InventoryCategoryValue; min_quantity: unknown; is_active: unknown }[]>`
+    SELECT id, name, unit, category, min_quantity, is_active FROM inventory_items WHERE id = ${itemId} FOR UPDATE
   `;
   if (!item) throw new InventoryError("დასახელება ვერ მოიძებნა");
   const batches = await tx.$queryRaw<{ id: number; expiry_date: Date | string | null; quantity: unknown }[]>`
     SELECT id, expiry_date, quantity FROM inventory_batches WHERE item_id = ${itemId} AND quantity > 0 FOR UPDATE
   `;
   return {
-    item: { id: item.id, name: item.name, unit: item.unit, isActive: Number(item.is_active) === 1, minQuantity: fromDecimal(String(item.min_quantity)) },
+    item: { id: item.id, name: item.name, unit: item.unit, category: item.category, isActive: Number(item.is_active) === 1, minQuantity: fromDecimal(String(item.min_quantity)) },
     batches: batches.map((b) => ({ id: b.id, expiryDate: dateOnly(b.expiry_date), quantity: fromDecimal(String(b.quantity)) })),
   };
 }
@@ -90,9 +91,13 @@ export type ConsumeData = {
   itemId: number;
   quantity: number;
   note: string | null;
+  /** ვის/სად გაიცა (განყოფილება, კაბინეტი) — სამეურნეო საქონელზე სავალდებულო */
+  recipient?: string | null;
   /** პროცედურის/კვლევის შესრულებისას — ვისზე და რომელ დანიშნულებაზე დაიხარჯა */
   patientId?: number | null;
   medicalOrderId?: number | null;
+  /** სამეურნეო საქონლის გაცემა (inventory.manage — src/modules/inventory/access.ts) */
+  allowGeneral?: boolean;
 };
 
 /** გახარჯვა: FEFO ვარგის პარტიებზე (ერთი ოპერაცია შეიძლება რამდენიმე პარტიას შეეხოს). */
@@ -100,6 +105,11 @@ export async function consume(tx: Db, userId: number, input: ConsumeData) {
   const today = tbilisiToday();
   const { item, batches } = await lockItem(tx, input.itemId);
   if (!item.isActive) throw new InventoryError(`დასახელება გათიშულია: ${item.name}`);
+  if (!isMedical(item.category)) {
+    // სამეურნეო: პაციენტზე/პროცედურაზე არ იხარჯება; გასცემს მხოლოდ საწყობი, მიმღების მითითებით
+    if (input.patientId || input.medicalOrderId || !input.allowGeneral) throw new InventoryError(`სამეურნეო საქონელს გასცემს მხოლოდ საწყობი: ${item.name}`);
+    if (!input.recipient) throw new InventoryError("შეასწორეთ მონიშნული ველები", { recipient: "მიუთითეთ, ვის ან სად გაიცა" });
+  }
   const before = usableQuantity(batches, today);
   const allocation = allocateFefo(batches, input.quantity, today);
   if (!allocation) {
@@ -117,6 +127,7 @@ export async function consume(tx: Db, userId: number, input: ConsumeData) {
         type: "consumption",
         quantity: toDecimal(-a.quantity),
         note: input.note,
+        recipient: input.recipient ?? null,
         patientId: input.patientId ?? null,
         medicalOrderId: input.medicalOrderId ?? null,
         createdById: userId,

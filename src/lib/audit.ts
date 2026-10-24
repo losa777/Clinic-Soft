@@ -11,6 +11,8 @@ import { prisma } from "@/lib/db";
  */
 export type AuditEntry = {
   userId: number | null;
+  /** რომელი როლით (რამდენიმე როლის მომხმარებელი); გამოტოვებული — მიმდინარე სესიის როლი */
+  roleCode?: string | null;
   action: string;
   entity: string;
   entityId?: number | null;
@@ -30,10 +32,25 @@ export async function clientIp(): Promise<string | null> {
   }
 }
 
+/** მოქმედების შემსრულებლის როლი: ამ მოთხოვნის განყოფილება (requireRole) ან სესიის აქტიური როლი. */
+async function actingRole(userId: number | null): Promise<string | null> {
+  if (userId === null) return null;
+  try {
+    // dal → auth → audit: ციკლური იმპორტის თავიდან ასაცილებლად — გამოძახებისას
+    const { getSession, requestRole } = await import("@/lib/dal");
+    const session = await getSession();
+    if (session?.user?.id !== String(userId)) return null;
+    return requestRole().code ?? session.user.roleCode;
+  } catch {
+    return null; // მოთხოვნის გარეთ (სკრიპტი, ტაიმერი)
+  }
+}
+
 export async function audit(entry: AuditEntry, db: Db = prisma) {
   await db.auditLog.create({
     data: {
       userId: entry.userId,
+      roleCode: entry.roleCode !== undefined ? entry.roleCode : await actingRole(entry.userId),
       action: entry.action,
       entity: entry.entity,
       entityId: entry.entityId ?? null,

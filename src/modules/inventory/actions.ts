@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { type ActionResult, failure, isUniqueViolation, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { managesGeneral } from "@/modules/inventory/access";
+import { type InventoryCategoryValue, MEDICAL_CATEGORIES } from "@/modules/inventory/labels";
 import { INVENTORY_ROUTES } from "@/modules/inventory/routes";
 import {
   type ConsumeInput,
@@ -40,7 +42,7 @@ export async function saveItemAction(input: ItemInput): Promise<ActionResult> {
   const parsed = itemSchema.safeParse(input);
   if (!parsed.success) return invalidInput(issuePaths(parsed.error));
   const { id, minQuantity, category, ...rest } = parsed.data;
-  const data = { ...rest, category: category as "medication" | "consumable" | "reagent", minQuantity: toDecimal(minQuantity), updatedAt: new Date() };
+  const data = { ...rest, category: category as InventoryCategoryValue, minQuantity: toDecimal(minQuantity), updatedAt: new Date() };
   try {
     if (id) {
       const { count } = await prisma.inventoryItem.updateMany({ where: { id }, data });
@@ -105,7 +107,7 @@ export async function consumeAction(input: ConsumeInput): Promise<ActionResult> 
   const parsed = consumeSchema.safeParse(input);
   if (!parsed.success) return invalidInput(issuePaths(parsed.error));
   try {
-    await inventoryTx((tx) => consume(tx, Number(me.id), parsed.data));
+    await inventoryTx((tx) => consume(tx, Number(me.id), { ...parsed.data, allowGeneral: managesGeneral(me) }));
   } catch (error) {
     return inventoryFailure(error);
   }
@@ -121,10 +123,11 @@ export async function saveNormsAction(input: NormsInput): Promise<ActionResult> 
   const { serviceId, lines } = parsed.data;
   const [service, items] = await Promise.all([
     prisma.service.findUnique({ where: { id: serviceId }, select: { name: true } }),
-    prisma.inventoryItem.count({ where: { id: { in: lines.map((l) => l.itemId) }, isActive: true } }),
+    // ნორმაში მხოლოდ სამედიცინო (სამეურნეო პაციენტზე არ იხარჯება)
+    prisma.inventoryItem.count({ where: { id: { in: lines.map((l) => l.itemId) }, isActive: true, category: { in: MEDICAL_CATEGORIES } } }),
   ]);
   if (!service) return failure("სერვისი ვერ მოიძებნა");
-  if (items !== lines.length) return failure("ზოგიერთი დასახელება გათიშულია ან ვერ მოიძებნა");
+  if (items !== lines.length) return failure("ზოგიერთი დასახელება გათიშულია, ვერ მოიძებნა ან სამეურნეოა");
   await prisma.$transaction((tx) => replaceNorms(tx, serviceId, lines.map((l) => ({ itemId: l.itemId, quantity: toDecimal(l.quantity) }))));
   revalidateInventory();
   return success(lines.length ? `ნორმა შენახულია: ${service.name}` : `ნორმა წაიშალა: ${service.name}`);

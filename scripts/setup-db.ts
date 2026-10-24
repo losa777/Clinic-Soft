@@ -834,6 +834,8 @@ async function createEmrTables() {
       CONSTRAINT fk_audit_log_patient FOREIGN KEY (patient_id) REFERENCES patients (id)
     ) ${TABLE_OPTIONS}
   `);
+  // რომელი როლით შეასრულა (რამდენიმე როლის მომხმარებელი)
+  await ensureColumn("audit_log", "role_code", "VARCHAR(30) NULL AFTER user_id");
 }
 
 /**
@@ -988,7 +990,7 @@ async function createInventoryTables() {
     CREATE TABLE IF NOT EXISTS inventory_items (
       id            INT AUTO_INCREMENT PRIMARY KEY,
       name          VARCHAR(200)  NOT NULL,
-      category      ENUM('medication', 'consumable', 'reagent') NOT NULL,
+      category      ENUM('medication', 'consumable', 'reagent', 'stationery', 'household') NOT NULL,
       unit          VARCHAR(20)   NOT NULL,
       min_quantity  DECIMAL(12,2) NOT NULL DEFAULT 0,
       tracks_expiry TINYINT(1)    NOT NULL DEFAULT 1,
@@ -1081,6 +1083,9 @@ async function createInventoryTables() {
       CONSTRAINT fk_service_materials_item FOREIGN KEY (item_id) REFERENCES inventory_items (id)
     ) ${TABLE_OPTIONS}
   `);
+  // სამეურნეო და საკანცელარიო საქონელი (ვადის გარეშე, გაიცემა განყოფილებაზე); recipient — ვის/სად გაიცა
+  await ensureEnum("inventory_items", "category", ["medication", "consumable", "reagent", "stationery", "household"], "NOT NULL");
+  await ensureColumn("inventory_movements", "recipient", "VARCHAR(100) NULL AFTER note");
 }
 
 /**
@@ -1101,6 +1106,24 @@ async function createSecurityTables() {
       INDEX idx_login_attempts_username (username, created_at),
       INDEX idx_login_attempts_ip (ip, created_at),
       INDEX idx_login_attempts_created (created_at)
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
+/**
+ * რამდენიმე როლი ერთ მომხმარებელს: users.role_id — მთავარი როლი, user_roles — დამატებითი (მაგ. რეგისტრატორი + საწყობი).
+ * users.active_role_id — ბოლოს არჩეული როლი (შესვლისას იქ იხსნება); FK არ აქვს — როლის წაშლისას მთავარზე ბრუნდება.
+ */
+async function createUserRoleTables() {
+  await ensureColumn("users", "active_role_id", "INT NULL AFTER role_id");
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS user_roles (
+      user_id INT NOT NULL,
+      role_id INT NOT NULL,
+      PRIMARY KEY (user_id, role_id),
+      INDEX idx_user_roles_role (role_id),
+      CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+      CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
     ) ${TABLE_OPTIONS}
   `);
 }
@@ -1409,6 +1432,7 @@ async function main() {
   await createChatTables();
   await createInventoryTables();
   await createSecurityTables();
+  await createUserRoleTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { recordHasRole, userWithRole } from "@/lib/user-roles";
 import { scheduleSummary, timeOfDate } from "@/lib/doctor-schema";
 import { type DoctorRow, DoctorsTable } from "./doctors-table";
 
@@ -10,9 +11,9 @@ export const metadata: Metadata = { title: "ექიმები" };
 
 export default async function DoctorsPage() {
   await requireRole("admin");
-  // „ექიმის“ როლის მომხმარებლები და ისინიც, ვისაც პროფილი აქვს, მაგრამ როლი შეეცვალა
+  // „ექიმის“ როლის მომხმარებლები (მთავარი ან დამატებითი) და ისინიც, ვისაც პროფილი აქვს, მაგრამ როლი შეეცვალა
   const users = await prisma.user.findMany({
-    where: { OR: [{ role: { code: "doctor" } }, { doctorProfile: { isNot: null } }] },
+    where: { OR: [userWithRole({ code: "doctor" }), { doctorProfile: { isNot: null } }] },
     select: {
       id: true,
       username: true,
@@ -20,6 +21,7 @@ export default async function DoctorsPage() {
       lastName: true,
       isActive: true,
       role: { select: { code: true } },
+      extraRoles: { select: { role: { select: { code: true } } } },
       doctorProfile: {
         select: {
           visitDuration: true,
@@ -45,7 +47,7 @@ export default async function DoctorsPage() {
       schedule: p
         ? scheduleSummary(p.schedules.map((s) => ({ weekday: s.weekday, start: timeOfDate(s.startTime), end: timeOfDate(s.endTime) })))
         : "",
-      status: !p ? "none" : u.role.code !== "doctor" ? "not-doctor" : p.isActive && u.isActive ? "active" : "inactive",
+      status: !p ? "none" : !recordHasRole(u, "doctor") ? "not-doctor" : p.isActive && u.isActive ? "active" : "inactive",
     };
   });
 

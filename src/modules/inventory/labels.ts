@@ -4,11 +4,32 @@ export const CATEGORIES = [
   { value: "medication", label: "მედიკამენტი" },
   { value: "consumable", label: "სახარჯი მასალა" },
   { value: "reagent", label: "რეაგენტი" },
+  { value: "stationery", label: "საკანცელარიო" },
+  { value: "household", label: "სამეურნეო" },
 ] as const;
 
 export type InventoryCategoryValue = (typeof CATEGORIES)[number]["value"];
 
 export const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map((c) => [c.value, c.label])) as Record<InventoryCategoryValue, string>;
+
+/**
+ * ჯგუფები: სამედიცინო (სერია/ვადა, იხარჯება პაციენტზე/პროცედურაზე, ნორმებში) და სამეურნეო (საკანცელარიო,
+ * სამეურნეო — ვადის გარეშე, გაიცემა განყოფილებაზე; მართავს მხოლოდ საწყობი/ადმინი, ხედავს ანგარიშების როლიც).
+ */
+export const MEDICAL_CATEGORIES: InventoryCategoryValue[] = ["medication", "consumable", "reagent"];
+export const GENERAL_CATEGORIES: InventoryCategoryValue[] = ["stationery", "household"];
+
+export type CategoryGroup = "medical" | "general";
+
+export const isMedical = (category: InventoryCategoryValue) => MEDICAL_CATEGORIES.includes(category);
+
+export const GROUP_FILTERS = [
+  { value: "all", label: "ყველა" },
+  { value: "medical", label: "სამედიცინო" },
+  { value: "general", label: "სამეურნეო" },
+] as const;
+
+export type GroupFilter = (typeof GROUP_FILTERS)[number]["value"];
 
 export const MOVEMENT_TYPES = [
   { value: "receipt", label: "შემოსავალი" },
@@ -44,4 +65,4 @@ export const STOCK_STATUSES = [
 export type StockStatusFilter = (typeof STOCK_STATUSES)[number]["value"];
 
 /** საზომი ერთეულის შეთავაზებები (ველში ნებისმიერი ტექსტი შეიძლება). */
-export const UNIT_SUGGESTIONS = ["ცალი", "ამპულა", "ფლაკონი", "ტაბლეტი", "მლ", "გ", "წყვილი", "შეფუთვა", "ტესტი"];
+export const UNIT_SUGGESTIONS = ["ცალი", "ამპულა", "ფლაკონი", "ტაბლეტი", "მლ", "გ", "წყვილი", "შეფუთვა", "ტესტი", "ლ", "კგ", "რულონი", "ყუთი"];

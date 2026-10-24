@@ -3,8 +3,9 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/db";
 import { can, type PermissionCode } from "@/lib/permissions";
-import { rolePath } from "@/lib/roles";
+import { hasRole, rolePath } from "@/lib/roles";
 
 /** მიმდინარე სესია — ერთი მოთხოვნის ფარგლებში ერთხელ იკითხება. */
 export const getSession = cache(async () => {
@@ -20,15 +21,35 @@ export async function requireUser() {
   return session.user;
 }
 
-/** მომხმარებელი მოცემული როლით; სხვა როლი თავის გვერდზე გადადის. */
+/**
+ * ამ მოთხოვნის როლი: requireRole-ით გახსნილი განყოფილება (აუდიტისთვის — src/lib/audit.ts).
+ * სესიის roleCode მოთხოვნის დასაწყისის მდგომარეობაა, როლის გადართვისას კი ეს უკვე ახალია.
+ */
+export const requestRole = cache((): { code: string | null } => ({ code: null }));
+
+/** ბოლოს არჩეული როლი ინახება — შემდეგ შესვლაზე აქ გაიხსნება. ერთ მოთხოვნაში ერთხელ. */
+const rememberRole = cache(async (userId: number, code: string) => {
+  const role = await prisma.role.findUnique({ where: { code }, select: { id: true } });
+  if (role) await prisma.user.update({ where: { id: userId }, data: { activeRoleId: role.id } });
+});
+
+/**
+ * მომხმარებელი მოცემული როლით (მთავარი ან დამატებითი); სხვა როლი თავის გვერდზე გადადის.
+ * რამდენიმე როლის მომხმარებელს ეს როლი აქტიური ხდება (ზედა პანელი, აუდიტი, შემდეგი შესვლა).
+ */
 export async function requireRole(roleCode: string) {
-  return requireAnyRole(roleCode);
+  const user = await requireAnyRole(roleCode);
+  requestRole().code = roleCode;
+  if (user.roleCode === roleCode) return user;
+  await rememberRole(Number(user.id), roleCode);
+  const role = user.roles.find((r) => r.code === roleCode);
+  return { ...user, roleCode, roleName: role?.name ?? user.roleName };
 }
 
 /** მომხმარებელი ერთ-ერთი როლით (Server Actions-ისთვის, რომლებიც რამდენიმე როლს ეკუთვნის). */
 export async function requireAnyRole(...roleCodes: string[]) {
   const user = await requireUser();
-  if (!roleCodes.includes(user.roleCode)) redirect(rolePath(user.roleCode));
+  if (!hasRole(user, ...roleCodes)) redirect(rolePath(user.roleCode));
   return user;
 }
 

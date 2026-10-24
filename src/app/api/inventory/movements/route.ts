@@ -1,6 +1,6 @@
 import { periodParams, positiveInt } from "@/modules/finance/params";
 import { apiPermission, csvResponse } from "@/modules/finance/server/csv";
-import { MOVEMENT_LABELS, MOVEMENT_TYPES, type MovementTypeValue, REASON_LABELS } from "@/modules/inventory/labels";
+import { GROUP_FILTERS, type GroupFilter, MOVEMENT_LABELS, MOVEMENT_TYPES, type MovementTypeValue, REASON_LABELS } from "@/modules/inventory/labels";
 import { exportMovements } from "@/modules/inventory/server/stock";
 import { inputQuantity } from "@/modules/inventory/stock";
 
@@ -11,10 +11,11 @@ export async function GET(request: Request) {
   const params = Object.fromEntries(new URL(request.url).searchParams);
   const period = periodParams(params, 30);
   const type = MOVEMENT_TYPES.some((t) => t.value === params.type) ? (params.type as MovementTypeValue) : null;
-  const rows = await exportMovements({ ...period, type, itemId: positiveInt(params.item), page: 1 });
+  const group = GROUP_FILTERS.some((g) => g.value === params.group) ? (params.group as GroupFilter) : "all";
+  const rows = await exportMovements({ ...period, type, itemId: positiveInt(params.item), group, page: 1 });
   return csvResponse(
     `inventory-movements-${period.from}-${period.to}.csv`,
-    ["დრო", "დასახელება", "ოპერაცია", "რაოდენობა", "ერთეული", "სერია", "ვადა", "მიზეზი", "მომწოდებელი", "ზედნადები", "პაციენტი", "შენიშვნა", "თანამშრომელი"],
+    ["დრო", "დასახელება", "ოპერაცია", "რაოდენობა", "ერთეული", "სერია", "ვადა", "მიზეზი", "მომწოდებელი", "ზედნადები", "პაციენტი", "ვის/სად გაიცა", "შენიშვნა", "თანამშრომელი"],
     rows.map((m) => [
       m.at,
       m.itemName,
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
       m.supplier,
       m.documentNumber,
       m.patient,
+      m.recipient,
       m.note,
       m.user,
     ]),

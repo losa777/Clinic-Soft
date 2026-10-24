@@ -22,7 +22,8 @@ import { consume } from "@/modules/inventory/server/operations";
  */
 
 const idSchema = z.number().int().positive();
-const DOCTOR_LINK = "/doctor";
+/** ექიმის ვიზიტის გვერდი (შეტყობინების ბმული) — src/modules/emr/screens/doctor-screens.tsx */
+const DOCTOR_VISIT = "/doctor/visits";
 
 type Materials = { itemId: number; quantity: number }[];
 
@@ -144,7 +145,7 @@ export async function submitResultAction(formData: FormData): Promise<ActionResu
         userId: o.createdById,
         type: "lab_ready",
         title: `კვლევის შედეგი მზადაა: ${o.serviceName}`,
-        link: `${DOCTOR_LINK}?appointment=${o.encounter.appointmentId}&tab=studies`,
+        link: `${DOCTOR_VISIT}/${o.encounter.appointmentId}?tab=studies`,
       });
       return o.serviceName;
     }, EMR_TX);
@@ -184,7 +185,7 @@ export async function markProcedureDoneAction(input: ProcedureDoneInput & { mate
         type: "procedure_done",
         title: `პროცედურა შესრულდა: ${o.serviceName}`,
         body: note,
-        link: `${DOCTOR_LINK}?appointment=${o.encounter.appointmentId}&tab=orders`,
+        link: `${DOCTOR_VISIT}/${o.encounter.appointmentId}?tab=orders`,
       });
       return o.serviceName;
     }, EMR_TX);

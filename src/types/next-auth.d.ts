@@ -3,8 +3,11 @@ import type { DefaultSession } from "next-auth";
 interface ClinicUserFields {
   firstName: string;
   lastName: string;
+  /** აქტიური როლი (რამდენიმე როლის მომხმარებელს — ბოლოს არჩეული) */
   roleCode: string;
   roleName: string;
+  /** ყველა როლი: მთავარი პირველია, შემდეგ დამატებითები (src/lib/roles.ts → hasRole) */
+  roles: { code: string; name: string }[];
   /** როლის უფლებების კოდები (src/lib/permissions.ts) */
   permissions: string[];
   /** შესვლის (სესიის) იდენტიფიკატორი — ჩატის კავშირებისთვის; ძველ სესიებს არ აქვს */

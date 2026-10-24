@@ -11,6 +11,7 @@ import { unlockUsername } from "@/lib/login-guard";
 import { passwordSchema } from "@/lib/password-policy";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { recordHasRole, userWithRole } from "@/lib/user-roles";
 import { endChatSessions } from "@/modules/chat/realtime/emit";
 
 const name = (label: string) =>
@@ -26,6 +27,8 @@ const userFields = {
   firstName: name("სახელი"),
   lastName: name("გვარი"),
   roleId: z.coerce.number({ error: "აირჩიეთ როლი" }).int().positive("აირჩიეთ როლი"),
+  // დამატებითი როლები (მაგ. რეგისტრატორი + საწყობის მენეჯერი); მთავარი როლი აქ არ მეორდება
+  extraRoleIds: z.array(z.number().int().positive()).max(20).default([]),
   isActive: z.boolean(),
 };
 
@@ -46,8 +49,22 @@ export type UpdateUserInput = z.input<typeof updateSchema>;
 const PATH = "/admin/users";
 const USERNAME_TAKEN = { username: "ეს მომხმარებელი უკვე არსებობს" };
 
-async function roleExists(roleId: number) {
-  return (await prisma.role.count({ where: { id: roleId } })) > 0;
+/** მთავარი + დამატებითი როლები (დუბლიკატების გარეშე); null — რომელიმე როლი ვერ მოიძებნა. */
+async function resolveRoles(roleId: number, extraRoleIds: number[]) {
+  const extra = [...new Set(extraRoleIds)].filter((id) => id !== roleId);
+  const found = await prisma.role.findMany({ where: { id: { in: [roleId, ...extra] } }, select: { id: true } });
+  return found.length === extra.length + 1 ? { roleId, extra } : null;
+}
+
+const ROLE_NOT_FOUND = failure("როლი ვერ მოიძებნა", { roleId: "აირჩიეთ როლი" });
+
+/** მომხმარებლის ყველა როლის სახელი (მთავარი პირველი) — აუდიტისთვის. */
+async function roleNames(userId: number): Promise<string> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: { select: { name: true } }, extraRoles: { select: { role: { select: { name: true } } }, orderBy: { roleId: "asc" } } },
+  });
+  return u ? [u.role.name, ...u.extraRoles.map((r) => r.role.name)].join(", ") : "";
 }
 
 /**
@@ -57,15 +74,20 @@ async function roleExists(roleId: number) {
 async function checkAdminSafety(
   currentUserId: number,
   targetId: number,
-  after: { removed: true } | { roleId: number; isActive: boolean },
+  after: { removed: true } | { roleIds: number[]; isActive: boolean },
 ): Promise<string | null> {
-  const target = await prisma.user.findUnique({ where: { id: targetId }, include: { role: true } });
+  const target = await prisma.user.findUnique({
+    where: { id: targetId },
+    include: { role: true, extraRoles: { select: { role: { select: { code: true } } } } },
+  });
   if (!target) return "მომხმარებელი ვერ მოიძებნა";
 
+  // ადმინობა — მთავარი ან დამატებითი როლით
+  const adminRole = await prisma.role.findUnique({ where: { code: "admin" }, select: { id: true } });
   const losesAdmin =
-    target.role.code === "admin" &&
+    recordHasRole(target, "admin") &&
     target.isActive &&
-    ("removed" in after || !after.isActive || after.roleId !== target.roleId);
+    ("removed" in after || !after.isActive || !after.roleIds.includes(adminRole?.id ?? -1));
   if (!losesAdmin) return null;
 
   if (targetId === currentUserId) {
@@ -75,7 +97,7 @@ async function checkAdminSafety(
   }
 
   const otherAdmins = await prisma.user.count({
-    where: { isActive: true, role: { code: "admin" }, id: { not: targetId } },
+    where: { isActive: true, ...userWithRole({ code: "admin" }), id: { not: targetId } },
   });
   return otherAdmins === 0 ? "სისტემაში უნდა დარჩეს ერთი აქტიური ადმინისტრატორი მაინც" : null;
 }
@@ -84,13 +106,16 @@ export async function createUser(input: CreateUserInput): Promise<ActionResult> 
   const me = await requireRole("admin");
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { password, ...data } = parsed.data;
+  const { password, extraRoleIds, ...data } = parsed.data;
 
-  if (!(await roleExists(data.roleId))) return failure("როლი ვერ მოიძებნა", { roleId: "აირჩიეთ როლი" });
+  const roles = await resolveRoles(data.roleId, extraRoleIds);
+  if (!roles) return ROLE_NOT_FOUND;
 
   try {
-    const created = await prisma.user.create({ data: { ...data, passwordHash: await bcrypt.hash(password, 12) }, include: { role: { select: { name: true } } } });
-    await audit({ userId: Number(me.id), action: "create", entity: "user", entityId: created.id, details: `${created.username} · ${created.role.name}` });
+    const created = await prisma.user.create({
+      data: { ...data, passwordHash: await bcrypt.hash(password, 12), extraRoles: { create: roles.extra.map((roleId) => ({ roleId })) } },
+    });
+    await audit({ userId: Number(me.id), action: "create", entity: "user", entityId: created.id, details: `${created.username} · ${await roleNames(created.id)}` });
   } catch (error) {
     if (isUniqueViolation(error)) return failure("მომხმარებელი უკვე არსებობს", USERNAME_TAKEN);
     throw error;
@@ -103,28 +128,34 @@ export async function updateUser(input: UpdateUserInput): Promise<ActionResult> 
   const me = await requireRole("admin");
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { id, password, ...data } = parsed.data;
+  const { id, password, extraRoleIds, ...data } = parsed.data;
 
-  if (!(await roleExists(data.roleId))) return failure("როლი ვერ მოიძებნა", { roleId: "აირჩიეთ როლი" });
-  const blocked = await checkAdminSafety(Number(me.id), id, data);
+  const roles = await resolveRoles(data.roleId, extraRoleIds);
+  if (!roles) return ROLE_NOT_FOUND;
+  const blocked = await checkAdminSafety(Number(me.id), id, { roleIds: [roles.roleId, ...roles.extra], isActive: data.isActive });
   if (blocked) return failure(blocked);
 
-  const before = await prisma.user.findUnique({ where: { id }, include: { role: { select: { name: true } } } });
+  const before = await prisma.user.findUnique({ where: { id } });
+  const rolesBefore = await roleNames(id);
   try {
-    const after = await prisma.user.update({
-      where: { id },
-      // ახალი პაროლი: მომხმარებლის ყველა სესია წყდება (session_version) — შედის ახალი პაროლით
-      data: {
-        ...data,
-        ...(password ? { passwordHash: await bcrypt.hash(password, 12), sessionVersion: { increment: 1 }, passwordChangedAt: new Date() } : {}),
-      },
-      include: { role: { select: { name: true } } },
+    const after = await prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { userId: id } });
+      await tx.userRole.createMany({ data: roles.extra.map((roleId) => ({ userId: id, roleId })) });
+      return tx.user.update({
+        where: { id },
+        // ახალი პაროლი: მომხმარებლის ყველა სესია წყდება (session_version) — შედის ახალი პაროლით
+        data: {
+          ...data,
+          ...(password ? { passwordHash: await bcrypt.hash(password, 12), sessionVersion: { increment: 1 }, passwordChangedAt: new Date() } : {}),
+        },
+      });
     });
+    const rolesAfter = await roleNames(id);
     // რა შეიცვალა (პაროლი — მხოლოდ ფაქტი, მნიშვნელობის გარეშე)
     const changes = [
       before && before.username !== after.username && `მომხმარებელი: ${before.username} → ${after.username}`,
       before && (before.firstName !== after.firstName || before.lastName !== after.lastName) && `სახელი: ${after.firstName} ${after.lastName}`,
-      before && before.roleId !== after.roleId && `როლი: ${before.role.name} → ${after.role.name}`,
+      rolesBefore !== rolesAfter && `როლები: ${rolesBefore} → ${rolesAfter}`,
       before && before.isActive !== after.isActive && (after.isActive ? "გააქტიურდა" : "გაითიშა"),
       password && "პაროლი შეიცვალა",
     ].filter(Boolean);
@@ -144,10 +175,11 @@ export async function updateUser(input: UpdateUserInput): Promise<ActionResult> 
 
 export async function setUserActive(id: number, isActive: boolean): Promise<ActionResult> {
   const me = await requireRole("admin");
-  const target = await prisma.user.findUnique({ where: { id } });
+  const target = await prisma.user.findUnique({ where: { id }, include: { extraRoles: { select: { roleId: true } } } });
   if (!target) return failure("მომხმარებელი ვერ მოიძებნა");
 
-  const blocked = await checkAdminSafety(Number(me.id), id, { roleId: target.roleId, isActive });
+  const roleIds = [target.roleId, ...target.extraRoles.map((r) => r.roleId)];
+  const blocked = await checkAdminSafety(Number(me.id), id, { roleIds, isActive });
   if (blocked) return failure(blocked);
 
   await prisma.user.update({ where: { id }, data: { isActive } });

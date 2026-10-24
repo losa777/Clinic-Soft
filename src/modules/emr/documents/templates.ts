@@ -110,7 +110,8 @@ export const DOCUMENT_TEMPLATES: Record<DocumentTypeCode, DocumentTemplate & { p
       { key: "complaints", label: "ჩივილები", kind: "textarea" },
       { key: "anamnesis", label: "ანამნეზი", kind: "textarea" },
       { key: "examination", label: "ობიექტური გასინჯვა", kind: "textarea" },
-      { key: "vitals", label: "ვიტალური მაჩვენებლები", kind: "text" },
+      // რამდენიმე ხაზი: ვიტალური + სპეციალობის მაჩვენებლები (prefill — lines())
+      { key: "vitals", label: "ვიტალური მაჩვენებლები", kind: "textarea" },
       { key: "diagnosis", label: "დიაგნოზი (ICD-10)", kind: "textarea", required: true },
       { key: "studies", label: "ჩატარებული / დანიშნული კვლევები", kind: "textarea" },
       { key: "treatment", label: "მკურნალობა", kind: "textarea" },

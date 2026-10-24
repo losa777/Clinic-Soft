@@ -237,7 +237,7 @@ describe("ცოცხალი რიგი და შეტყობინე�
       );
       const queued = await tx.appointment.findFirstOrThrow({ where: { patientId: f.patient.id, source: "walk_in" } });
       assert.equal(queued.status, "arrived");
-      const n = await tx.notification.findFirst({ where: { userId: doctor.userId, type: "patient_arrived", link: `/doctor?appointment=${queued.id}` } });
+      const n = await tx.notification.findFirst({ where: { userId: doctor.userId, type: "patient_arrived", link: `/doctor/visits/${queued.id}` } });
       assert.ok(n, "შეტყობინება ექიმს");
     });
   });

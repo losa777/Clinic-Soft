@@ -3,6 +3,7 @@ import { KeyRound, LogOut } from "lucide-react";
 import type { Session } from "next-auth";
 import { Logo } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
+import { RoleSwitcher } from "@/components/role-switcher";
 import { ThemeToggle } from "@/components/theme";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { logout } from "@/lib/auth-actions";
@@ -22,7 +23,7 @@ export function Header({ user }: { user: Session["user"] }) {
             <p className="truncate text-sm font-medium">
               {user.firstName} {user.lastName}
             </p>
-            <p className="truncate text-xs text-muted-foreground">{user.roleName}</p>
+            <RoleSwitcher roles={user.roles} active={{ code: user.roleCode, name: user.roleName }} />
           </div>
           <ChatHeaderButton />
           <NotificationBell />

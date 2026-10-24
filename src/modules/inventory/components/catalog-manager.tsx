@@ -17,7 +17,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { type AppColumnDef, tableFeatureSet } from "@/lib/table";
 import { NativeSelectClient } from "@/modules/finance/components/native-select";
 import { saveItemAction, saveSupplierAction, setItemActiveAction } from "@/modules/inventory/actions";
-import { CATEGORIES, CATEGORY_LABELS, type InventoryCategoryValue, UNIT_SUGGESTIONS } from "@/modules/inventory/labels";
+import { CATEGORIES, CATEGORY_LABELS, GENERAL_CATEGORIES, type InventoryCategoryValue, UNIT_SUGGESTIONS } from "@/modules/inventory/labels";
 
 export type CatalogItemRow = {
   id: number;
@@ -34,6 +34,7 @@ export type CatalogItemRow = {
 export type SupplierRow = { id: number; name: string; taxId: string | null; phone: string | null; note: string | null; isActive: boolean; receipts: number };
 
 const ALL = "all";
+const OTHER_UNIT = "__other";
 
 /** კატალოგი: დასახელებები (დამატება, რედაქტირება, გათიშვა) და მომწოდებლები. */
 export function CatalogManager({ items, suppliers }: { items: CatalogItemRow[]; suppliers: SupplierRow[] }) {
@@ -234,6 +235,8 @@ function ItemForm({ item, onDone }: { item: CatalogItemRow | null; onDone: () =>
   const [name, setName] = useState(item?.name ?? "");
   const [category, setCategory] = useState<string>(item?.category ?? "consumable");
   const [unit, setUnit] = useState(item?.unit ?? "ცალი");
+  // სიაში არ მყოფი ერთეული (ადრე ხელით ჩაწერილი) — „სხვა“ ველით
+  const [customUnit, setCustomUnit] = useState(() => !UNIT_SUGGESTIONS.includes(item?.unit ?? "ცალი"));
   const [minQuantity, setMinQuantity] = useState(item?.minQuantity ?? "0");
   const [tracksExpiry, setTracksExpiry] = useState(item?.tracksExpiry ?? true);
   const [note, setNote] = useState(item?.note ?? "");
@@ -264,20 +267,38 @@ function ItemForm({ item, onDone }: { item: CatalogItemRow | null; onDone: () =>
             value={category}
             onChange={(v) => {
               setCategory(v);
-              // მედიკამენტს და რეაგენტს ვადა ყოველთვის აქვს
-              if (!item && v !== "consumable") setTracksExpiry(true);
+              // ახალ დასახელებაზე: მედიკამენტს და რეაგენტს ვადა ყოველთვის აქვს, სამეურნეოს — ჩვეულებრივ არა (ჩართვა შეიძლება)
+              if (!item && (v === "medication" || v === "reagent")) setTracksExpiry(true);
+              if (!item && GENERAL_CATEGORIES.includes(v as InventoryCategoryValue)) setTracksExpiry(false);
             }}
             options={[...CATEGORIES]}
             className="h-10"
           />
         </FormField>
         <FormField id="item-unit" label="საზომი ერთეული *" error={errors.unit}>
-          <Input id="item-unit" list="item-unit-options" value={unit} onChange={(e) => setUnit(e.target.value)} maxLength={20} className="h-10" />
-          <datalist id="item-unit-options">
-            {UNIT_SUGGESTIONS.map((u) => (
-              <option key={u} value={u} />
-            ))}
-          </datalist>
+          {/* სიიდან ან „სხვა“ — საკუთარი ტექსტით (datalist ავსებულ ველში მხოლოდ დამთხვევას აჩვენებს — არჩევანი არ ჩანდა) */}
+          <NativeSelectClient
+            id="item-unit"
+            value={customUnit ? OTHER_UNIT : unit}
+            onChange={(v) => {
+              setCustomUnit(v === OTHER_UNIT);
+              setUnit(v === OTHER_UNIT ? "" : v);
+            }}
+            options={[...UNIT_SUGGESTIONS.map((u) => ({ value: u, label: u })), { value: OTHER_UNIT, label: "სხვა (ჩაწერეთ)" }]}
+            invalid={Boolean(errors.unit)}
+            className="h-10"
+          />
+          {customUnit && (
+            <Input
+              aria-label="საზომი ერთეული — საკუთარი"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              maxLength={20}
+              placeholder="მაგ. ბოთლი"
+              className="h-10"
+              autoFocus
+            />
+          )}
         </FormField>
       </div>
       <FormField id="item-min" label="მინიმალური ნაშთი" error={errors.minQuantity} hint="ამაზე ნაკლებისას გაფრთხილება მოვა; 0 — გაფრთხილების გარეშე">

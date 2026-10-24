@@ -36,6 +36,15 @@ export const ROLE_CODE_PATTERN = /^[a-z][a-z0-9-]{1,29}$/;
 /** კოდები, რომლებიც სისტემის მარშრუტებს ემთხვევა ან მომავლისთვისაა დაჯავშნილი. */
 export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public", "chat", "account"];
 
+/** სესიის როლი: მომხმარებელს შეიძლება რამდენიმე ჰქონდეს (მთავარი + დამატებითი, users.role_id + user_roles). */
+export type RoleRef = { code: string; name: string };
+
+/** მომხმარებელს ერთ-ერთი ეს როლი აქვს (მთავარი ან დამატებითი; ძველ სესიაში roles არაა — მხოლოდ roleCode). */
+export function hasRole(user: { roleCode: string; roles?: RoleRef[] }, ...codes: string[]): boolean {
+  const own = user.roles?.length ? user.roles.map((r) => r.code) : [user.roleCode];
+  return codes.some((code) => own.includes(code));
+}
+
 /** როლის მთავარი გვერდის მისამართი. */
 export function rolePath(code: string): string {
   return `/${code}`;
