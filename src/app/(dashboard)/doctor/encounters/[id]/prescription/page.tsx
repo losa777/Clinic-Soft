@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/dal";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { DOCTOR_PATIENTS } from "@/modules/emr/screens/doctor-screens";
 import { PrescriptionPrintScreen } from "@/modules/emr/screens/prescription-print";
 import { positiveInt } from "@/modules/finance/params";

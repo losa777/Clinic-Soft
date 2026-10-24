@@ -2,7 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarDays, CalendarPlus, FileText, FlaskConical, HandCoins, type LucideIcon, Syringe, Users, Wallet } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BarChart3,
+  BookOpen,
+  BriefcaseMedical,
+  CalendarDays,
+  CalendarPlus,
+  ClipboardCheck,
+  ClipboardList,
+  FileText,
+  FlaskConical,
+  HandCoins,
+  ListChecks,
+  MessagesSquare,
+  type LucideIcon,
+  Package,
+  PackageMinus,
+  PackagePlus,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  ShieldPlus,
+  Stethoscope,
+  Syringe,
+  TrendingUp,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { useActiveTabIntoView } from "@/components/use-active-tab";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +44,23 @@ const ICONS = {
   lab: FlaskConical,
   procedures: Syringe,
   cash: Wallet,
+  stock: Package,
+  receive: PackagePlus,
+  issue: PackageMinus,
+  movements: ArrowLeftRight,
+  catalog: BookOpen,
+  count: ClipboardCheck,
+  norms: ListChecks,
+  analytics: TrendingUp,
+  audit: ScrollText,
+  services: ClipboardList,
+  doctors: Stethoscope,
+  specialties: BriefcaseMedical,
+  insurance: ShieldPlus,
+  settings: Settings,
+  users: Users,
+  roles: ShieldCheck,
+  chat: MessagesSquare,
 } satisfies Record<string, LucideIcon>;
 
 export type RoleNavLink = { href: string; label: string; icon: keyof typeof ICONS };

@@ -10,7 +10,7 @@ import { formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appoin
 
 type Db = Prisma.TransactionClient;
 
-export type NotificationType = "patient_arrived" | "lab_ready" | "procedure_done";
+export type NotificationType = "patient_arrived" | "lab_ready" | "procedure_done" | "inventory_low" | "inventory_expiry";
 
 /** შეტყობინების ჩაწერა. ტრანზაქციაში გადაეცით tx — ცვლილებასთან ერთად ჩაიწერება ან ერთად გაუქმდება. */
 export async function notify(

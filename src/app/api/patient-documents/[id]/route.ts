@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { auditOnce } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { readDocument } from "@/lib/document-storage";
 import { can } from "@/lib/permissions";
@@ -19,6 +20,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/patient-docu
   const id = Number((await ctx.params).id);
   const doc = Number.isInteger(id) ? await prisma.patientDocument.findUnique({ where: { id } }) : null;
   if (!doc) return new Response("დოკუმენტი ვერ მოიძებნა", { status: 404 });
+  await auditOnce({ userId: Number(session.user.id), action: "view", entity: "patient_document", entityId: doc.id, patientId: doc.patientId, details: doc.originalName });
 
   let file: Buffer;
   try {

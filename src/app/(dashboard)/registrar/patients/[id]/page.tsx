@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { loadPatientOr404, PatientScreen } from "@/components/patients/screens/patient-screen";
+import { auditPatientView } from "@/lib/audit";
 import { requireRole } from "@/lib/dal";
 import { PATIENT_ROUTES } from "@/lib/patient-routes";
 
@@ -12,6 +13,7 @@ export async function generateMetadata({ params }: PageProps<"/registrar/patient
 }
 
 export default async function PatientPage({ params }: PageProps<"/registrar/patients/[id]">) {
-  await requireRole("registrar");
+  const user = await requireRole("registrar");
+  await auditPatientView(Number(user.id), (await params).id, "რეგისტრატურა");
   return <PatientScreen routes={PATIENT_ROUTES.registrar} rawId={(await params).id} canEdit={false} />;
 }

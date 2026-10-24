@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { detectMimeType, readDocument, removeDocuments, storeDocument } from "@/lib/document-storage";
 import { renderDocumentPdf, signerName } from "@/modules/emr/documents/pdf";
 import { DOCUMENT_TEMPLATES, isDocumentType, SIGNER_ROLE_LABELS, validateDocumentValues } from "@/modules/emr/documents/templates";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { loadPdfInput, loadPrefillContext, serializeContent } from "@/modules/emr/server/documents";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
 import { lockOwnDraftDocument as lockOwnDraft } from "@/modules/emr/server/guards";

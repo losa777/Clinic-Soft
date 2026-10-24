@@ -21,6 +21,20 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   allowedDevOrigins: devOrigins(),
+  // უსაფრთხოების სათაურები ყველა პასუხზე (HSTS — server.ts-ში, მხოლოდ https-ზე)
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // სხვა საიტი გვერდს iframe-ში ვერ ჩასვამს (clickjacking); საკუთარი PDF-ის preview — დაშვებულია
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
+  },
   experimental: {
     // dev-ის ფაილური ქეში (.next/dev/cache) გამორთულია: Next 16.4.2-ში ფაილის შეცვლის შემდეგ ძველი ქეშით გაშვებისას
     // Turbopack root chunk-ზე ყოველ კავშირზე „restart“-ს აგზავნის — გვერდი უსასრულოდ ხელახლა იტვირთება

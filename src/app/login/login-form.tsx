@@ -1,18 +1,24 @@
 "use client";
 
 import { useActionState } from "react";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login, type LoginState } from "@/lib/auth-actions";
 
-export function LoginForm() {
+export function LoginForm({ notice }: { notice: string | null }) {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(login, {});
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
+      {notice && !state.error && (
+        <Alert>
+          <CircleCheck />
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      )}
       {state.error && (
         <Alert variant="destructive">
           <CircleAlert />

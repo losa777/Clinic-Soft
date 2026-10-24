@@ -11,6 +11,7 @@ export const SYSTEM_ROLES = {
   lab: "ლაბორანტი",
   accountant: "ბუღალტერი",
   director: "დირექტორი",
+  warehouse: "საწყობის მენეჯერი",
 } as const;
 
 export type SystemRoleCode = keyof typeof SYSTEM_ROLES;
@@ -33,7 +34,7 @@ export const PATIENT_EDITOR_ROLE: SystemRoleCode = "admin";
 export const ROLE_CODE_PATTERN = /^[a-z][a-z0-9-]{1,29}$/;
 
 /** კოდები, რომლებიც სისტემის მარშრუტებს ემთხვევა ან მომავლისთვისაა დაჯავშნილი. */
-export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public", "chat"];
+export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public", "chat", "account"];
 
 /** როლის მთავარი გვერდის მისამართი. */
 export function rolePath(code: string): string {

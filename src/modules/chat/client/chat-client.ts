@@ -180,6 +180,7 @@ export class ChatClient {
     socket.on("conversation:read", (e) => this.receiveRead(e.conversationId, e.userId, e.lastReadMessageId));
     socket.on("conversation:changed", ({ conversationId }) => void this.refreshConversation(conversationId));
     socket.on("conversation:removed", ({ conversationId }) => this.dropConversation(conversationId));
+    socket.on("history:purged", () => void this.reloadAfterPurge());
     socket.on("typing", ({ conversationId, userId }) => {
       if (userId === this.meId) return;
       this.setState((s) => ({
@@ -228,6 +229,30 @@ export class ChatClient {
       }),
     );
     await Promise.all(Object.keys(this.state.details).map((id) => this.refreshConversation(Number(id))));
+  }
+
+  /** ისტორია გასუფთავდა: სია და ჩატვირთული საუბრების ბოლო გვერდი თავიდან (ძველი შეტყობინებები ქრება, არა ერწყმის). */
+  private async reloadAfterPurge() {
+    await this.loadConversations();
+    await Promise.all(
+      Object.keys(this.state.messages).map(async (key) => {
+        const id = Number(key);
+        try {
+          const page = await chatApi.messages(id, { limit: MESSAGE_PAGE_SIZE });
+          this.updateMessages(id, (cur) => ({
+            ...cur,
+            status: "ready",
+            error: null,
+            items: page.messages,
+            hasMoreBefore: page.hasMoreBefore,
+            hasMoreAfter: false,
+            firstUnreadId: null,
+          }));
+        } catch (error) {
+          this.updateMessages(id, (cur) => ({ ...cur, status: "error", error: errorText(error) }));
+        }
+      }),
+    );
   }
 
   // ─── მონაცემები ───

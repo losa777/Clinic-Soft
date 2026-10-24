@@ -90,11 +90,11 @@ export function Pager({ page, pageCount, href }: { page: number; pageCount: numb
 }
 
 /** CSV ექსპორტი (Excel ხსნის; UTF-8 BOM-ით ქართული სწორად ჩანს). */
-export function ExportLink({ href }: { href: string }) {
+export function ExportLink({ href, label = "Excel / CSV" }: { href: string; label?: string }) {
   return (
     <a href={href} className={cn(buttonVariants({ variant: "outline", size: "lg" }), "print:hidden")} download>
       <Download />
-      Excel / CSV
+      {label}
     </a>
   );
 }

@@ -6,7 +6,7 @@ import { tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { ensureCardNumber } from "@/modules/emr/server/card";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
 

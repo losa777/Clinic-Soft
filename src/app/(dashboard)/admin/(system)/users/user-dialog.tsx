@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { ActionResult } from "@/lib/action-result";
+import { PASSWORD_HINT } from "@/lib/password-policy";
 import { createUser, updateUser } from "./actions";
 import type { RoleOption, UserRow } from "./users-table";
 
@@ -102,7 +103,7 @@ function UserForm({ user, roles, isSelf, onDone }: Omit<Props, "open" | "onOpenC
         id="user-password"
         label={user ? "ახალი პაროლი" : "პაროლი"}
         error={errors.password}
-        hint={user ? "დატოვეთ ცარიელი, თუ პაროლს არ ცვლით" : "მინიმუმ 8 სიმბოლო"}
+        hint={user ? `დატოვეთ ცარიელი, თუ პაროლს არ ცვლით. ${PASSWORD_HINT}; შეცვლისას მომხმარებელი სისტემიდან გამოვა` : PASSWORD_HINT}
       >
         <Input {...input("password")} type="password" autoComplete="new-password" />
       </FormField>

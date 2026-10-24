@@ -91,6 +91,8 @@ export interface ServerToClientEvents {
   "conversation:changed": (e: { conversationId: number }) => void;
   /** მომხმარებელი საუბრიდან ამოიშალა / გავიდა */
   "conversation:removed": (e: { conversationId: number }) => void;
+  /** ძველი შეტყობინებები წაიშალა (ადმინის გასუფთავება) — სია და ჩატვირთული ისტორია თავიდან */
+  "history:purged": () => void;
   typing: (e: { conversationId: number; userId: number }) => void;
   presence: (e: PresenceUpdate) => void;
   /** დაკავშირებისას: ყველა შესული (არა offline) თანამშრომლის სტატუსი */

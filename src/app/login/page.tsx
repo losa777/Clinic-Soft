@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "შესვლა" };
 // შესულ მომხმარებელს გვერდის რენდერამდე გადავამისამართებთ
 export const instant = false;
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const session = await getSession();
   if (session?.user) redirect(rolePath(session.user.roleCode));
 
@@ -27,7 +27,7 @@ export default async function LoginPage() {
             <CardDescription>შეიყვანეთ თქვენი მომხმარებელი და პაროლი</CardDescription>
           </CardHeader>
           <CardContent>
-            <LoginForm />
+            <LoginForm notice={(await searchParams).changed === "1" ? "პაროლი შეიცვალა — შედით ახალი პაროლით" : null} />
           </CardContent>
         </Card>
       </div>

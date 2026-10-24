@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { type ActionFailure, type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
+import { audit } from "@/lib/audit";
 import { requireAnyRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { detectMimeType, removeDocuments, storeDocument } from "@/lib/document-storage";
@@ -141,6 +142,17 @@ export async function savePatient(formData: FormData): Promise<PatientSaveResult
           await tx.patientDocument.createMany({ data: stored.map((s) => ({ ...s, patientId: patient.id })) });
         }
         if (policy) await createPatientPolicy(tx, patient.id, policy, userId);
+        await audit(
+          {
+            userId,
+            action: patientId === null ? "create" : "update",
+            entity: "patient",
+            entityId: patient.id,
+            patientId: patient.id,
+            details: [stored.length ? `დოკუმენტი: ${stored.length}` : null, policy ? "პოლისი" : null].filter(Boolean).join(", ") || null,
+          },
+          tx,
+        );
         return patient.id;
       },
       { timeout: 15_000 },
@@ -189,7 +201,10 @@ export async function addPatientDocuments(formData: FormData): Promise<PatientSa
   const stored = await storeUploads(uploads, Number(me.id));
 
   try {
-    await prisma.patientDocument.createMany({ data: stored.map((s) => ({ ...s, patientId })) });
+    await prisma.$transaction(async (tx) => {
+      await tx.patientDocument.createMany({ data: stored.map((s) => ({ ...s, patientId })) });
+      await audit({ userId: Number(me.id), action: "upload", entity: "patient_document", patientId, details: stored.map((s) => s.originalName).join(", ") }, tx);
+    });
   } catch (error) {
     await removeDocuments(stored.map((s) => s.storagePath));
     throw error;
@@ -212,7 +227,10 @@ export async function deletePatientDocument(id: number): Promise<ActionResult> {
   // ხელმოწერილი სამედიცინო დოკუმენტის PDF და კვლევის შედეგი სამედიცინო ჩანაწერის ნაწილია — არ იშლება
   if (doc._count.medicalDocuments > 0) return failure("ხელმოწერილი სამედიცინო დოკუმენტი არ იშლება — შექმენით ახალი ვერსია");
   if (doc._count.orderResults > 0) return failure("კვლევის შედეგის ფაილი არ იშლება");
-  await prisma.patientDocument.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.patientDocument.delete({ where: { id } });
+    await audit({ userId: Number(me.id), action: "delete", entity: "patient_document", entityId: id, patientId: doc.patientId, details: doc.originalName }, tx);
+  });
   await removeDocuments([doc.storagePath]);
   return success("დოკუმენტი წაიშალა");
 }

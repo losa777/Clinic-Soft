@@ -25,8 +25,10 @@ export async function authenticateSocket(req: IncomingMessage): Promise<SocketDa
   const userId = Number(token?.id);
   if (!token || !Number.isSafeInteger(userId)) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true, sessionVersion: true } });
   if (!user?.isActive) return null;
+  // პაროლი შეიცვალა — ძველი სესიის cookie აღარ მოქმედებს (როგორც auth.ts-ის jwt callback-ში)
+  if ((typeof token.sv === "number" ? token.sv : 0) !== user.sessionVersion) return null;
 
   return {
     userId,

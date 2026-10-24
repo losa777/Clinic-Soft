@@ -15,7 +15,7 @@ import {
   type ProfileItemInput,
   profileItemSchema,
 } from "@/modules/emr/schema";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { searchIcd10 } from "@/modules/emr/server/icd10";
 
 /**

@@ -9,6 +9,8 @@ interface ClinicUserFields {
   permissions: string[];
   /** შესვლის (სესიის) იდენტიფიკატორი — ჩატის კავშირებისთვის; ძველ სესიებს არ აქვს */
   sid?: string;
+  /** სესიის ვერსია (users.session_version) — პაროლის შეცვლისას ძველი სესიები უქმდება */
+  sv?: number;
 }
 
 declare module "next-auth" {

@@ -7,9 +7,13 @@ import { prisma } from "@/lib/db";
 import { detectMimeType, removeDocuments, storeDocument } from "@/lib/document-storage";
 import { formatFileSize, MAX_FILE_SIZE } from "@/lib/patient-schema";
 import { type ProcedureDoneInput, procedureDoneSchema } from "@/modules/emr/schema";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
 import { notify } from "@/lib/notifications";
+import { can } from "@/lib/permissions";
+import { issuePaths, type MaterialsInput, materialsSchema } from "@/modules/inventory/schema";
+import { type Db, InventoryError } from "@/modules/inventory/server/db";
+import { consume } from "@/modules/inventory/server/operations";
 
 /**
  * დანიშნულებების შესრულება: ლაბორანტი (orders.lab) — ლაბორატორიული/ინსტრუმენტული კვლევა; ექთანი (orders.nurse) —
@@ -19,6 +23,31 @@ import { notify } from "@/lib/notifications";
 
 const idSchema = z.number().int().positive();
 const DOCTOR_LINK = "/doctor";
+
+type Materials = { itemId: number; quantity: number }[];
+
+/**
+ * შესრულებისას გამოყენებული მასალა (საწყობი): ვალიდაცია და უფლება (inventory.consume). ცარიელი — არაფერი ჩამოიწერება.
+ */
+function parseMaterials(user: { roleCode: string; permissions: string[] }, input: unknown): { ok: true; materials: Materials } | { ok: false; error: ActionResult } {
+  const parsed = materialsSchema.safeParse(input ?? []);
+  if (!parsed.success) return { ok: false, error: failure(`გამოყენებული მასალა: ${Object.values(issuePaths(parsed.error))[0] ?? "შეასწორეთ"}`) };
+  if (parsed.data.length && !can(user, "inventory.consume")) return { ok: false, error: failure("საწყობიდან გახარჯვის უფლება არ გაქვთ") };
+  return { ok: true, materials: parsed.data };
+}
+
+/** მასალის ჩამოწერა იმავე ტრანზაქციაში (FEFO); ნაშთი თუ არ ჰყოფნის — მთელი შესრულება უქმდება. */
+async function consumeMaterials(tx: Db, userId: number, materials: Materials, order: { id: number; patientId: number; serviceName: string }) {
+  for (const m of materials) {
+    await consume(tx, userId, { itemId: m.itemId, quantity: m.quantity, note: order.serviceName, patientId: order.patientId, medicalOrderId: order.id });
+  }
+}
+
+/** EMR-ის ან საწყობის შეცდომა → ActionResult. */
+function fulfillmentFailure(error: unknown) {
+  if (error instanceof InventoryError) return failure(error.message);
+  return emrFailure(error);
+}
 
 /** ლაბორატორია: „ნიმუში აღებულია“ (ordered → sample_taken). */
 export async function markSampleTakenAction(orderId: number): Promise<ActionResult> {
@@ -60,6 +89,14 @@ export async function submitResultAction(formData: FormData): Promise<ActionResu
   const file = formData.get("file");
   const hasFile = file instanceof File && file.size > 0;
   if (!resultText && !hasFile) return failure("შეიყვანეთ შედეგი ან დაურთეთ ფაილი", { resultText: "შედეგი ცარიელია" });
+  let rawMaterials: unknown = [];
+  try {
+    rawMaterials = JSON.parse(String(formData.get("materials") ?? "[]"));
+  } catch {
+    return failure("გამოყენებული მასალა: არასწორი მონაცემები");
+  }
+  const mats = parseMaterials(me, rawMaterials);
+  if (!mats.ok) return mats.error;
 
   let stored: { path: string; mimeType: string; size: number; name: string } | null = null;
   if (hasFile) {
@@ -101,6 +138,7 @@ export async function submitResultAction(formData: FormData): Promise<ActionResu
         data: { status: "ready", resultText, resultDocumentId: doc?.id ?? null, performedById: userId, performedAt: now, updatedAt: now },
       });
       if (!count) throw new EmrError("დანიშნულება ამასობაში შეიცვალა — განაახლეთ გვერდი");
+      await consumeMaterials(tx, userId, mats.materials, { id: orderId, patientId: o.patientId, serviceName: o.serviceName });
       await audit({ userId, action: "result", entity: "order", entityId: orderId, patientId: o.patientId, details: o.serviceName }, tx);
       await notify(tx, {
         userId: o.createdById,
@@ -113,15 +151,17 @@ export async function submitResultAction(formData: FormData): Promise<ActionResu
     return success(`შედეგი შენახულია: ${name}`);
   } catch (error) {
     if (stored) await removeDocuments([stored.path]);
-    return emrFailure(error);
+    return fulfillmentFailure(error);
   }
 }
 
-/** ექთანი: პროცედურა შესრულებულია (ordered → done), შენიშვნით. */
-export async function markProcedureDoneAction(input: ProcedureDoneInput): Promise<ActionResult> {
+/** ექთანი: პროცედურა შესრულებულია (ordered → done), შენიშვნით; გამოყენებული მასალა საწყობიდან ჩამოიწერება. */
+export async function markProcedureDoneAction(input: ProcedureDoneInput & { materials?: MaterialsInput }): Promise<ActionResult> {
   const me = await requirePermission("orders.nurse");
   const parsed = procedureDoneSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
+  const mats = parseMaterials(me, input.materials);
+  if (!mats.ok) return mats.error;
   const { orderId, note } = parsed.data;
   const userId = Number(me.id);
   try {
@@ -137,6 +177,7 @@ export async function markProcedureDoneAction(input: ProcedureDoneInput): Promis
         data: { status: "done", resultText: note, performedById: userId, performedAt: now, updatedAt: now },
       });
       if (!count) throw new EmrError("პროცედურა უკვე შესრულებულია ან გაუქმებულია");
+      await consumeMaterials(tx, userId, mats.materials, { id: orderId, patientId: o.patientId, serviceName: o.serviceName });
       await audit({ userId, action: "done", entity: "order", entityId: orderId, patientId: o.patientId, details: o.serviceName }, tx);
       await notify(tx, {
         userId: o.createdById,
@@ -149,6 +190,6 @@ export async function markProcedureDoneAction(input: ProcedureDoneInput): Promis
     }, EMR_TX);
     return success(`შესრულდა: ${name}`);
   } catch (error) {
-    return emrFailure(error);
+    return fulfillmentFailure(error);
   }
 }

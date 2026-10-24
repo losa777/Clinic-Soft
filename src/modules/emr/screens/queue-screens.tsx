@@ -5,11 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { documentUrl } from "@/lib/patient-schema";
 import { cn } from "@/lib/utils";
-import { ProcedureDoneForm, ResultForm, SampleTakenButton } from "@/modules/emr/components/fulfillment-forms";
+import { type OrderStock, ProcedureDoneForm, ResultForm, SampleTakenButton } from "@/modules/emr/components/fulfillment-forms";
 import { ORDER_STATUS_LABELS, ORDER_TYPE_LABELS } from "@/modules/emr/schema";
 import { loadQueue, type QueueRow } from "@/modules/emr/server/orders";
 import { Pager } from "@/modules/finance/components/filters";
 import { param, positiveInt, type SearchParams, withParams } from "@/modules/finance/params";
+import type { MaterialItem } from "@/modules/inventory/components/materials-editor";
+import { loadNorms } from "@/modules/inventory/server/norms";
+import { loadStock } from "@/modules/inventory/server/stock";
 
 export const LAB_HOME = "/lab";
 export const NURSE_HOME = "/nurse";
@@ -24,11 +27,16 @@ const CONFIG: Record<Kind, { home: string; title: string; types: OrderType[]; pe
 /**
  * ლაბორანტის / ექთნის რიგი: „მიმდინარე“ — ძველი პირველი (FIFO), „შესრულებული“ — ახალი პირველი. 30 ჩანაწერი გვერდზე.
  * ექიმის დანიშნულებები აქ ავტომატურად ჩნდება; შესრულებისას ექიმი შეტყობინებას იღებს.
+ * canConsume (inventory.consume) — შესრულების ფორმაში „გამოყენებული მასალა“ სერვისის ნორმით (საწყობი).
  */
-export async function OrderQueueScreen({ kind, params }: { kind: Kind; params: SearchParams }) {
+export async function OrderQueueScreen({ kind, params, canConsume }: { kind: Kind; params: SearchParams; canConsume: boolean }) {
   const c = CONFIG[kind];
   const view = param(params.view) === "done" ? "done" : "pending";
   const queue = await loadQueue({ types: c.types, statuses: view === "done" ? c.done : c.pending, page: positiveInt(params.page) ?? 1 });
+  const active = view === "pending" && canConsume && queue.rows.length > 0;
+  const [norms, stock] = active ? await Promise.all([loadNorms(queue.rows.map((r) => r.serviceId)), loadStock()]) : [null, null];
+  const items: MaterialItem[] = (stock ?? []).filter((i) => i.isActive).map((i) => ({ id: i.id, name: i.name, unit: i.unit, usable: i.usable }));
+  const stockFor = (r: QueueRow): OrderStock => (norms ? { items, norm: norms.get(r.serviceId) ?? [] } : null);
   const viewHref = (v: string, page?: number) => withParams(c.home, { view: v === "pending" ? null : v, page: page && page > 1 ? page : null });
 
   return (
@@ -62,7 +70,7 @@ export async function OrderQueueScreen({ kind, params }: { kind: Kind; params: S
       ) : (
         <ul className="flex flex-col gap-2">
           {queue.rows.map((r) => (
-            <QueueItem key={r.id} row={r} kind={kind} />
+            <QueueItem key={r.id} row={r} kind={kind} stock={stockFor(r)} />
           ))}
         </ul>
       )}
@@ -72,7 +80,7 @@ export async function OrderQueueScreen({ kind, params }: { kind: Kind; params: S
   );
 }
 
-function QueueItem({ row: r, kind }: { row: QueueRow; kind: Kind }) {
+function QueueItem({ row: r, kind, stock }: { row: QueueRow; kind: Kind; stock: OrderStock }) {
   const active = r.status === "ordered" || r.status === "sample_taken";
   return (
     <li className="flex flex-col gap-2 rounded-xl border bg-card px-4 py-3 text-sm">
@@ -93,11 +101,11 @@ function QueueItem({ row: r, kind }: { row: QueueRow; kind: Kind }) {
       {active ? (
         <div className="flex flex-wrap items-start gap-2">
           {kind === "nurse" ? (
-            <ProcedureDoneForm orderId={r.id} />
+            <ProcedureDoneForm orderId={r.id} stock={stock} />
           ) : (
             <>
               {r.type === "lab" && r.status === "ordered" && <SampleTakenButton orderId={r.id} />}
-              <ResultForm orderId={r.id} />
+              <ResultForm orderId={r.id} stock={stock} />
             </>
           )}
         </div>

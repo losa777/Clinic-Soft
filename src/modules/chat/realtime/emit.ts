@@ -40,6 +40,11 @@ export function emitConversationHidden(userId: number, conversationId: number) {
   chatServer()?.to(userRoom(userId)).emit("conversation:removed", { conversationId });
 }
 
+/** ადმინმა ისტორია გაასუფთავა (ან ავტომატური გასუფთავება): ყველა შესული ხელახლა კითხულობს სიას და ღია საუბრებს. */
+export function emitHistoryPurged() {
+  chatServer()?.emit("history:purged");
+}
+
 /**
  * სესიის დასრულება: გასვლა (მხოლოდ ამ შესვლის ტაბები — sid) ან გათიშვა/წაშლა (ყველა ტაბი).
  * კავშირი წყდება — მომხმარებელი სხვებთან „გასულია“ ხდება (თუ სხვაგან შესული არ არის).

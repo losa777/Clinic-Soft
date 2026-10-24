@@ -6,7 +6,7 @@ import { formatTime } from "@/lib/appointment-slots";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { type EncounterDraftInput, encounterDraftSchema, type TemplateInput, templateSchema } from "@/modules/emr/schema";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { EMR_TX, EmrError } from "@/modules/emr/server/errors";
 import { saveEncounterMeasurements } from "@/modules/emr/server/measurements";
 

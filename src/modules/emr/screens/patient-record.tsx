@@ -10,7 +10,7 @@ import { can } from "@/lib/permissions";
 import { MedicalProfile } from "@/modules/emr/components/medical-profile";
 import { AllergyBanner, EncounterHistory, FilesList, StudiesList } from "@/modules/emr/components/record-sections";
 import { NoShowButton, StartVisitButton } from "@/modules/emr/components/visit-buttons";
-import { audit } from "@/modules/emr/server/audit";
+import { auditOnce } from "@/lib/audit";
 import { loadEncounterForm, loadTemplates } from "@/modules/emr/server/encounter";
 import { loadEncounterHistory, loadFiles, loadPatientCard, loadStudies } from "@/modules/emr/server/patient-card";
 import { EncounterForm } from "@/modules/emr/components/encounter-form";
@@ -74,7 +74,8 @@ export async function PatientRecord({
     encounter?.editable ? loadCompletionPreviewForView(encounter.id) : Promise.resolve(null),
     loadStampPath().then(Boolean),
   ]);
-  await audit({ userId, action: "view", entity: "patient", entityId: patientId, patientId, details: appointment ? `ჯავშანი ${appointment.id}` : null });
+  // გვერდის განახლება/ჩანართის გადართვა ჟურნალს არ ავსებს — ერთი ჩანაწერი 10 წუთში
+  await auditOnce({ userId, action: "view", entity: "patient", entityId: patientId, patientId, details: appointment ? `ჯავშანი ${appointment.id}` : null });
 
   const canEdit = can(user, "emr.edit");
   const bookingHrefs = can(user, "appointments.book")

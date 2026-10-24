@@ -66,6 +66,8 @@ export const QUEUE_PAGE_SIZE = 30;
 export type QueueRow = {
   id: number;
   type: OrderType;
+  /** ნორმისთვის (საწყობი: შესრულებისას გასახარჯი მასალა) */
+  serviceId: number;
   name: string;
   status: OrderStatus;
   note: string | null;
@@ -107,6 +109,7 @@ export async function loadQueue({ types, statuses, page }: { types: OrderType[];
       (o): QueueRow => ({
         id: o.id,
         type: o.type,
+        serviceId: o.serviceId,
         name: o.serviceName,
         status: o.status,
         note: o.note,

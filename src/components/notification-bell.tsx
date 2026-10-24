@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
+  CalendarClock,
   CheckCheck,
   FlaskConical,
+  PackageX,
   Syringe,
   UserRound,
 } from "lucide-react";
@@ -32,6 +34,8 @@ const ICONS: Record<string, typeof Bell> = {
   patient_arrived: UserRound,
   lab_ready: FlaskConical,
   procedure_done: Syringe,
+  inventory_low: PackageX,
+  inventory_expiry: CalendarClock,
 };
 
 /**

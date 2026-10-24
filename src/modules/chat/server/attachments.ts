@@ -8,7 +8,8 @@ import { ChatError } from "@/modules/chat/server/errors";
 
 /**
  * ჩატის ფაილები: ინახება DOCUMENTS_DIR/chat/-ში (public-ის გარეთ), გაიცემა მხოლოდ საუბრის მონაწილეს
- * (/api/chat/attachments/[id]). ტიპი მოწმდება შიგთავსით; ფაილი არ იშლება (შეტყობინების წაშლისასაც — აუდიტისთვის).
+ * (/api/chat/attachments/[id]). ტიპი მოწმდება შიგთავსით; ფაილი არ იშლება შეტყობინების წაშლისას (აუდიტისთვის) —
+ * მხოლოდ ადმინის გასუფთავებით (server/retention.ts).
  */
 
 export type StoredAttachment = {

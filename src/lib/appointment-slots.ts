@@ -8,7 +8,8 @@
 
 export const CLINIC_TIME_ZONE = "Asia/Tbilisi";
 
-const OFFSET_MINUTES = 4 * 60;
+/** თბილისი: UTC+4 (საზაფხულო დრო არ არის). SQL-შიც გამოიყენება (DATE_ADD … MINUTE). */
+export const OFFSET_MINUTES = 4 * 60;
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 

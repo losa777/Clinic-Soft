@@ -9,6 +9,8 @@ export type FinanceRoutes = {
   debts: string;
   reports: string;
   receipts: string | null;
+  /** ფინანსური ანალიზი (reports.finance); null — როლს ეს გვერდი არ აქვს */
+  analytics: string | null;
   /** პაციენტის ბარათი (ინვოისიდან გადასასვლელად); null — როლს პაციენტის გვერდი არ აქვს */
   patients: string | null;
 };
@@ -20,6 +22,7 @@ export const FINANCE_ROUTES = {
     debts: "/registrar/debts",
     reports: "/registrar/reports",
     receipts: "/registrar/receipts",
+    analytics: null,
     patients: "/registrar/patients",
   },
   accountant: {
@@ -28,6 +31,7 @@ export const FINANCE_ROUTES = {
     debts: "/accountant/debts",
     reports: "/accountant",
     receipts: null,
+    analytics: "/accountant/analytics",
     patients: null,
   },
   // ადმინს ყველა უფლება აქვს: ინვოისები (გადახდა, დაბრუნება, გაუქმება), სალარო, ანგარიშები
@@ -37,6 +41,7 @@ export const FINANCE_ROUTES = {
     debts: "/admin/debts",
     reports: "/admin/reports",
     receipts: "/admin/receipts",
+    analytics: "/admin/analytics",
     patients: "/admin/patients",
   },
   director: {
@@ -45,6 +50,7 @@ export const FINANCE_ROUTES = {
     debts: "/director/debts",
     reports: "/director",
     receipts: null,
+    analytics: "/director/analytics",
     patients: null,
   },
 } satisfies Record<string, FinanceRoutes>;

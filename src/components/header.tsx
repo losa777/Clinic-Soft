@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { LogOut } from "lucide-react";
+import { KeyRound, LogOut } from "lucide-react";
 import type { Session } from "next-auth";
 import { Logo } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
 import { ThemeToggle } from "@/components/theme";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { logout } from "@/lib/auth-actions";
 import { rolePath } from "@/lib/roles";
 import { ChatHeaderButton } from "@/modules/chat/components/chat-button";
@@ -27,6 +27,9 @@ export function Header({ user }: { user: Session["user"] }) {
           <ChatHeaderButton />
           <NotificationBell />
           <ThemeToggle />
+          <Link href="/account/password" className={buttonVariants({ variant: "ghost", size: "icon-lg" })} aria-label="პაროლის შეცვლა" title="პაროლის შეცვლა">
+            <KeyRound />
+          </Link>
           <form action={logout}>
             <Button type="submit" variant="outline" size="lg" aria-label="გამოსვლა">
               <LogOut />

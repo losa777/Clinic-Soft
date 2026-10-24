@@ -2,33 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BriefcaseMedical,
-  ClipboardList,
-  Contact,
-  FileText,
-  LayoutDashboard,
-  Settings,
-  ShieldCheck,
-  ShieldPlus,
-  Stethoscope,
-  Users,
-} from "lucide-react";
+import { Building2, Contact, FileText, LayoutDashboard, Package, ShieldCheck } from "lucide-react";
 import { useActiveTabIntoView } from "@/components/use-active-tab";
 import { cn } from "@/lib/utils";
 
-const LINKS: { href: string; label: string; icon: typeof Users; also?: string[] }[] = [
+/**
+ * ადმინის მთავარი მენიუ — ჯგუფებად; ჯგუფის შიგნით ქვე-ჩანართები საკუთარ layout-შია (URL-ები დაჯგუფებით არ იცვლება):
+ * ფინანსები — admin/(finance)/, საწყობი — admin/inventory/, კლინიკა — admin/(clinic)/, სისტემა — admin/(system)/.
+ * also — ჯგუფის სხვა გვერდები (ჩანართი მათზეც აქტიურია).
+ */
+const LINKS: { href: string; label: string; icon: typeof Contact; also?: string[] }[] = [
   { href: "/admin", label: "მიმოხილვა", icon: LayoutDashboard },
-  { href: "/admin/users", label: "მომხმარებლები", icon: Users },
-  { href: "/admin/roles", label: "როლები", icon: ShieldCheck },
   { href: "/admin/patients", label: "პაციენტები", icon: Contact },
-  // ფინანსები: ინვოისები, სალარო, დავალიანებები, ანგარიშები, ქვითრები (ქვე-ჩანართები — admin/(finance)/layout.tsx)
-  { href: "/admin/invoices", label: "ფინანსები", icon: FileText, also: ["/admin/cash", "/admin/debts", "/admin/reports", "/admin/receipts"] },
-  { href: "/admin/services", label: "სერვისები", icon: ClipboardList },
-  { href: "/admin/doctors", label: "ექიმები", icon: Stethoscope },
-  { href: "/admin/specialties", label: "სპეციალობები", icon: BriefcaseMedical },
-  { href: "/admin/insurance", label: "დაზღვევა", icon: ShieldPlus },
-  { href: "/admin/settings", label: "რეკვიზიტები", icon: Settings },
+  { href: "/admin/invoices", label: "ფინანსები", icon: FileText, also: ["/admin/cash", "/admin/debts", "/admin/reports", "/admin/receipts", "/admin/analytics"] },
+  { href: "/admin/inventory", label: "საწყობი", icon: Package },
+  // სერვისები, ექიმები, სპეციალობები, დაზღვევა, რეკვიზიტები
+  { href: "/admin/services", label: "კლინიკა", icon: Building2, also: ["/admin/doctors", "/admin/specialties", "/admin/insurance", "/admin/settings"] },
+  // მომხმარებლები, როლები, აუდიტი, ჩატი
+  { href: "/admin/users", label: "სისტემა", icon: ShieldCheck, also: ["/admin/roles", "/admin/audit", "/admin/chat"] },
 ];
 
 export function AdminNav() {

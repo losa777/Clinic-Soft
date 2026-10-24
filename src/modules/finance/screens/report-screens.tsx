@@ -1,7 +1,11 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Session } from "next-auth";
 import { Input } from "@/components/ui/input";
-import { formatDate, tbilisiToday, weekdayName } from "@/lib/appointment-slots";
+import { addDays, formatDate, tbilisiToday, weekdayName } from "@/lib/appointment-slots";
+import { can } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
+import { AnalyticsReport } from "@/modules/finance/components/analytics-report";
 import { CashShiftPanel } from "@/modules/finance/components/cash-shift-panel";
 import { DailyReport } from "@/modules/finance/components/daily-report";
 import { DebtList, InsurerDebtList } from "@/modules/finance/components/debt-list";
@@ -10,6 +14,7 @@ import { PrintButton } from "@/modules/finance/components/print-button";
 import { ReceiptPrint } from "@/modules/finance/components/receipt-print";
 import { dateParam, param, periodParams, positiveInt, type SearchParams, withParams } from "@/modules/finance/params";
 import { type FinanceRoutes, invoiceUrl } from "@/modules/finance/routes";
+import { loadAnalytics } from "@/modules/finance/server/analytics";
 import { loadOpenShift, loadRecentShifts } from "@/modules/finance/server/cash";
 import { insurerDebts, listDebts } from "@/modules/finance/server/debts";
 import { prisma } from "@/lib/db";
@@ -122,4 +127,75 @@ export async function ReceiptScreen({ routes, rawId }: { routes: FinanceRoutes; 
   if (!receipt) notFound();
   const payment = await prisma.payment.findUniqueOrThrow({ where: { id }, select: { invoiceId: true } });
   return <ReceiptPrint data={receipt} paymentId={id} backHref={invoiceUrl(routes, payment.invoiceId)} />;
+}
+
+/** სწრაფი პერიოდები (ბმულები — ფილტრი URL-შია). */
+function analyticsPresets(today: string) {
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const prevMonthEnd = addDays(monthStart, -1);
+  return [
+    { label: "ეს თვე", from: monthStart, to: today },
+    { label: "წინა თვე", from: `${prevMonthEnd.slice(0, 7)}-01`, to: prevMonthEnd },
+    { label: "ბოლო 30 დღე", from: addDays(today, -29), to: today },
+    { label: "ბოლო 3 თვე", from: addDays(today, -89), to: today },
+    { label: "ეს წელი", from: `${today.slice(0, 4)}-01-01`, to: today },
+  ];
+}
+
+/** ფინანსური ანალიზი (reports.finance): პერიოდი (ნაგულისხმევად — მიმდინარე თვე), შედარება წინასთან, დინამიკა, ჭრილები. */
+export async function AnalyticsScreen({ routes, user, params }: { routes: FinanceRoutes; user: User; params: SearchParams }) {
+  const base = routes.analytics;
+  if (!base) notFound();
+  const today = tbilisiToday();
+  const presets = analyticsPresets(today);
+  const hasPeriod = Boolean(param(params.from) || param(params.to));
+  const period = hasPeriod ? periodParams(params, 30) : { from: presets[0].from, to: presets[0].to };
+  const a = await loadAnalytics(period.from, period.to, { withInventory: can(user, "inventory.reports") });
+  const title = `ფინანსური ანალიზი — ${formatDate(period.from)} — ${formatDate(period.to)}`;
+
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
+        <div>
+          <h1 className="text-xl font-semibold">ფინანსური ანალიზი</h1>
+          <p className="text-sm text-muted-foreground">
+            {formatDate(period.from)} — {formatDate(period.to)}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <PrintButton />
+          <ExportLink href={withParams("/api/finance/analytics", { from: period.from, to: period.to, section: "doctors" })} label="ექიმები (CSV)" />
+          <ExportLink href={withParams("/api/finance/analytics", { from: period.from, to: period.to, section: "services" })} label="სერვისები (CSV)" />
+        </div>
+      </div>
+      <nav className="flex flex-wrap gap-1 print:hidden" aria-label="პერიოდი">
+        {presets.map((p) => {
+          const active = p.from === period.from && p.to === period.to;
+          return (
+            <Link
+              key={p.label}
+              href={withParams(base, { from: p.from, to: p.to })}
+              aria-current={active ? "true" : undefined}
+              className={cn(
+                "rounded-full border px-3 py-1 text-sm",
+                active ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {p.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <FilterBar action={base}>
+        <FilterField label="დან">
+          <DateInput name="from" value={period.from} />
+        </FilterField>
+        <FilterField label="მდე">
+          <DateInput name="to" value={period.to} />
+        </FilterField>
+      </FilterBar>
+      <h2 className="hidden text-lg font-semibold print:block">{title}</h2>
+      <AnalyticsReport a={a} />
+    </section>
+  );
 }

@@ -23,6 +23,7 @@ const TEST_USERS: { username: string; firstName: string; lastName: string; role:
   { username: "lab", firstName: "ლევან", lastName: "ჯავახიშვილი", role: "lab" },
   { username: "accountant", firstName: "თამარ", lastName: "ლომიძე", role: "accountant" },
   { username: "director", firstName: "ირაკლი", lastName: "წერეთელი", role: "director" },
+  { username: "warehouse", firstName: "ნათია", lastName: "ხარაიშვილი", role: "warehouse" },
 ];
 
 const TABLE_OPTIONS = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
@@ -965,6 +966,145 @@ async function createChatTables() {
   `);
 }
 
+/**
+ * საწყობი (src/modules/inventory/). ნაშთი პარტიებშია (inventory_batches.quantity — ვადით, სერიით, ფასით);
+ * ყოველი ცვლილება inventory_movements-ში იწერება (+ შემოსავალი, − გახარჯვა/ჩამოწერა) — არ იცვლება და არ იშლება.
+ * რაოდენობები DECIMAL(12,2): ცალი, მლ, ამპულა...
+ */
+async function createInventoryTables() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS inventory_suppliers (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      name       VARCHAR(200) NOT NULL,
+      tax_id     VARCHAR(20)  NULL,
+      phone      VARCHAR(50)  NULL,
+      note       VARCHAR(500) NULL,
+      is_active  TINYINT(1)   NOT NULL DEFAULT 1,
+      created_at DATETIME     NOT NULL,
+      UNIQUE INDEX uq_inventory_suppliers_name (name)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS inventory_items (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      name          VARCHAR(200)  NOT NULL,
+      category      ENUM('medication', 'consumable', 'reagent') NOT NULL,
+      unit          VARCHAR(20)   NOT NULL,
+      min_quantity  DECIMAL(12,2) NOT NULL DEFAULT 0,
+      tracks_expiry TINYINT(1)    NOT NULL DEFAULT 1,
+      note          VARCHAR(500)  NULL,
+      is_active     TINYINT(1)    NOT NULL DEFAULT 1,
+      created_at    DATETIME      NOT NULL,
+      updated_at    DATETIME      NOT NULL,
+      UNIQUE INDEX uq_inventory_items_name (name),
+      INDEX idx_inventory_items_category (category, is_active),
+      CONSTRAINT chk_inventory_items_min CHECK (min_quantity >= 0)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS inventory_receipts (
+      id              INT AUTO_INCREMENT PRIMARY KEY,
+      supplier_id     INT          NULL,
+      document_number VARCHAR(50)  NULL,
+      received_on     DATE         NOT NULL,
+      note            VARCHAR(500) NULL,
+      created_by      INT          NULL,
+      created_at      DATETIME     NOT NULL,
+      INDEX idx_inventory_receipts_received (received_on),
+      INDEX idx_inventory_receipts_supplier (supplier_id),
+      INDEX idx_inventory_receipts_created_by (created_by),
+      CONSTRAINT fk_inventory_receipts_supplier FOREIGN KEY (supplier_id) REFERENCES inventory_suppliers (id),
+      CONSTRAINT fk_inventory_receipts_created_by FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS inventory_batches (
+      id                INT AUTO_INCREMENT PRIMARY KEY,
+      item_id           INT           NOT NULL,
+      receipt_id        INT           NULL,
+      lot_number        VARCHAR(50)   NULL,
+      expiry_date       DATE          NULL,
+      unit_cost         DECIMAL(12,2) NULL,
+      received_quantity DECIMAL(12,2) NOT NULL,
+      quantity          DECIMAL(12,2) NOT NULL,
+      created_at        DATETIME      NOT NULL,
+      INDEX idx_inventory_batches_item (item_id, expiry_date),
+      INDEX idx_inventory_batches_expiry (expiry_date),
+      INDEX idx_inventory_batches_receipt (receipt_id),
+      CONSTRAINT chk_inventory_batches_quantity CHECK (quantity >= 0 AND received_quantity > 0),
+      CONSTRAINT chk_inventory_batches_cost CHECK (unit_cost IS NULL OR unit_cost >= 0),
+      CONSTRAINT fk_inventory_batches_item FOREIGN KEY (item_id) REFERENCES inventory_items (id),
+      CONSTRAINT fk_inventory_batches_receipt FOREIGN KEY (receipt_id) REFERENCES inventory_receipts (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  // BIGINT — ყოველი გახარჯვა ჩანაწერია; patient_id / medical_order_id — პროცედურისას გახარჯვა (ეტაპი 2)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS inventory_movements (
+      id               BIGINT AUTO_INCREMENT PRIMARY KEY,
+      item_id          INT           NOT NULL,
+      batch_id         INT           NOT NULL,
+      type             ENUM('receipt', 'consumption', 'writeoff', 'adjustment') NOT NULL,
+      quantity         DECIMAL(12,2) NOT NULL,
+      reason           ENUM('expired', 'damaged', 'lost', 'other') NULL,
+      note             VARCHAR(500)  NULL,
+      receipt_id       INT           NULL,
+      patient_id       INT           NULL,
+      medical_order_id INT           NULL,
+      created_by       INT           NULL,
+      created_at       DATETIME      NOT NULL,
+      INDEX idx_inventory_movements_item (item_id, created_at),
+      INDEX idx_inventory_movements_created (created_at),
+      INDEX idx_inventory_movements_batch (batch_id),
+      INDEX idx_inventory_movements_receipt (receipt_id),
+      INDEX idx_inventory_movements_patient (patient_id),
+      INDEX idx_inventory_movements_order (medical_order_id),
+      INDEX idx_inventory_movements_created_by (created_by),
+      CONSTRAINT chk_inventory_movements_quantity CHECK (quantity <> 0),
+      CONSTRAINT fk_inventory_movements_item FOREIGN KEY (item_id) REFERENCES inventory_items (id),
+      CONSTRAINT fk_inventory_movements_batch FOREIGN KEY (batch_id) REFERENCES inventory_batches (id),
+      CONSTRAINT fk_inventory_movements_receipt FOREIGN KEY (receipt_id) REFERENCES inventory_receipts (id),
+      CONSTRAINT fk_inventory_movements_patient FOREIGN KEY (patient_id) REFERENCES patients (id),
+      CONSTRAINT fk_inventory_movements_order FOREIGN KEY (medical_order_id) REFERENCES medical_orders (id),
+      CONSTRAINT fk_inventory_movements_created_by FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+  // სერვისის ნორმა: რა მასალა იხარჯება ერთ შესრულებაზე (ექთანი/ლაბორანტი შესრულებისას ხედავს და ასწორებს)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS service_materials (
+      service_id INT           NOT NULL,
+      item_id    INT           NOT NULL,
+      quantity   DECIMAL(12,2) NOT NULL,
+      PRIMARY KEY (service_id, item_id),
+      INDEX idx_service_materials_item (item_id),
+      CONSTRAINT chk_service_materials_quantity CHECK (quantity > 0),
+      CONSTRAINT fk_service_materials_service FOREIGN KEY (service_id) REFERENCES services (id) ON DELETE CASCADE,
+      CONSTRAINT fk_service_materials_item FOREIGN KEY (item_id) REFERENCES inventory_items (id)
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
+/**
+ * შესვლის დაცვა (src/lib/login-guard.ts): ყოველი მცდელობა — მომხმარებლის სახელით და IP-ით. kind: failed — არასწორი
+ * მონაცემები, blocked — დაბლოკვის დროს ცდა (ბლოკს არ აგრძელებს), success, unlock — ადმინმა განბლოკა (ათვლა თავიდან).
+ * users.session_version — პაროლის შეცვლისას იზრდება: ძველი სესიები (სხვა კომპიუტერებზე) მაშინვე წყდება.
+ */
+async function createSecurityTables() {
+  await ensureColumn("users", "session_version", "INT NOT NULL DEFAULT 0 AFTER is_active");
+  await ensureColumn("users", "password_changed_at", "DATETIME NULL AFTER session_version");
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS login_attempts (
+      id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+      username   VARCHAR(50) NOT NULL,
+      ip         VARCHAR(45) NULL,
+      kind       ENUM('failed', 'blocked', 'success', 'unlock') NOT NULL,
+      created_at DATETIME(3) NOT NULL,
+      INDEX idx_login_attempts_username (username, created_at),
+      INDEX idx_login_attempts_ip (ip, created_at),
+      INDEX idx_login_attempts_created (created_at)
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
 async function createPermissionTables() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS permissions (
@@ -1267,6 +1407,8 @@ async function main() {
   await createEmrTables();
   await createPermissionTables();
   await createChatTables();
+  await createInventoryTables();
+  await createSecurityTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();

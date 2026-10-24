@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { FinanceError } from "@/modules/finance/server/errors";
 import { createInvoice } from "@/modules/finance/server/invoices";
 import { EmrError } from "./errors";

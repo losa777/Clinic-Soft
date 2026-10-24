@@ -6,7 +6,7 @@ import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { allergyMatches } from "@/modules/emr/allergy";
 import { type OrderInput, orderSchema, type PrescriptionInput, prescriptionSchema } from "@/modules/emr/schema";
-import { audit } from "@/modules/emr/server/audit";
+import { audit } from "@/lib/audit";
 import { EMR_TX, EmrError, emrFailure } from "@/modules/emr/server/errors";
 import { ownDraftEncounter as ownDraft } from "@/modules/emr/server/guards";
 

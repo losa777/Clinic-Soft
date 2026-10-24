@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { lockedUsernames } from "@/lib/login-guard";
+import { formatTime } from "@/lib/appointment-slots";
 import { type RoleOption, type UserRow, UsersTable } from "./users-table";
 
 export const instant = false;
@@ -27,12 +29,14 @@ export default async function UsersPage() {
     prisma.role.findMany({ select: { id: true, name: true }, orderBy: { id: "asc" } }),
   ]);
 
+  const locks = await lockedUsernames(users.map((u) => u.username));
   const rows: UserRow[] = users.map((u) => ({
     id: u.id,
     username: u.username,
     firstName: u.firstName,
     lastName: u.lastName,
     isActive: u.isActive,
+    lockedUntil: locks.has(u.username.toLowerCase()) ? formatTime(locks.get(u.username.toLowerCase())!) : null,
     roleId: u.role.id,
     roleName: u.role.name,
     createdAt: u.createdAt.getTime(),

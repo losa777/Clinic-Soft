@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
+import { audit, clientIp } from "@/lib/audit";
+import { checkLock, recordAttempt } from "@/lib/login-guard";
 import { prisma } from "@/lib/db";
 import { ALL_PERMISSIONS, FULL_ACCESS_ROLE } from "@/lib/permissions";
 
@@ -9,6 +11,18 @@ const credentialsSchema = z.object({
   username: z.string().trim().min(1).max(50),
   password: z.string().min(1).max(200),
 });
+
+/** დაბლოკილი შესვლა (ზედიზედ წარუმატებელი ცდები): login-ის ფორმა code-ით დარჩენილ დროს აჩვენებს. */
+export class AccountLockedError extends CredentialsSignin {
+  code = "locked";
+}
+
+/** არარსებულ მომხმარებელზეც bcrypt-ის შედარება — პასუხის დრო არ ამხელს, არსებობს თუ არა სახელი. */
+let dummyHash: Promise<string> | null = null;
+const dummyCompare = (password: string) => {
+  dummyHash ??= bcrypt.hash("clinic-soft-dummy-password", 12);
+  return dummyHash.then((h) => bcrypt.compare(password, h));
+};
 
 /** სესიაში შესანახი ველები ბაზის ჩანაწერიდან. */
 async function loadSessionUser(where: { id: number } | { username: string }) {
@@ -25,6 +39,8 @@ async function loadSessionUser(where: { id: number } | { username: string }) {
       lastName: user.lastName,
       roleCode: user.role.code,
       roleName: user.role.name,
+      // პაროლის შეცვლისას იზრდება — ძველი სესიები უქმდება (jwt callback)
+      sv: user.sessionVersion,
       // ადმინს ყველა უფლება აქვს (ბაზის მინიჭების მიუხედავად)
       permissions: user.role.code === FULL_ACCESS_ROLE ? ALL_PERMISSIONS : user.role.permissions.map((p) => p.permission.code),
     },
@@ -44,10 +60,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
 
-        const found = await loadSessionUser({ username: parsed.data.username });
-        // იუზერის არარსებობა და არასწორი პაროლი ერთნაირად null-ს აბრუნებს
-        if (!found) return null;
-        if (!(await bcrypt.compare(parsed.data.password, found.user.passwordHash))) return null;
+        const { username, password } = parsed.data;
+        const ip = await clientIp();
+        // დაბლოკვა (src/lib/login-lock.ts) მოწმდება პაროლამდე: დაბლოკილზე სწორი პაროლიც არ მიიღება
+        const lock = await checkLock(username, ip);
+        if (lock) {
+          await recordAttempt(username, ip, "blocked");
+          await audit({ userId: null, action: "login_blocked", entity: "session", details: `მომხმარებელი: ${username}${lock.reason === "ip" ? " (IP დაბლოკილია)" : ""}` });
+          throw new AccountLockedError();
+        }
+
+        const found = await loadSessionUser({ username });
+        // იუზერის არარსებობა და არასწორი პაროლი ერთნაირად null-ს აბრუნებს; აუდიტში — ორივე (სახელით)
+        if (!found) {
+          await dummyCompare(password);
+          await recordAttempt(username, ip, "failed");
+          await audit({ userId: null, action: "login_failed", entity: "session", details: `მომხმარებელი: ${username}` });
+          return null;
+        }
+        if (!(await bcrypt.compare(password, found.user.passwordHash))) {
+          await recordAttempt(username, ip, "failed");
+          await audit({ userId: found.user.id, action: "login_failed", entity: "session", details: "არასწორი პაროლი" });
+          return null;
+        }
+        await recordAttempt(username, ip, "success");
+        await audit({ userId: found.user.id, action: "login", entity: "session" });
         return found.fields;
       },
     }),
@@ -61,7 +98,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // როლის ან სახელის ცვლილება კი მაშინვე აისახება სესიაში
       const id = Number(token.id);
       const found = Number.isInteger(id) ? await loadSessionUser({ id }) : null;
-      return found ? { ...token, ...found.fields } : null;
+      // პაროლი შეიცვალა (ამ ან სხვა კომპიუტერზე) — ძველი სესია აღარ მოქმედებს
+      if (!found || (token.sv ?? 0) !== found.user.sessionVersion) return null;
+      return { ...token, ...found.fields };
     },
     session({ session, token }) {
       session.user.id = token.id;

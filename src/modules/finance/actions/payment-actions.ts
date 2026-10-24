@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { type ActionFailure, failure, invalid } from "@/lib/action-result";
+import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { fromTetri } from "@/modules/finance/calc";
@@ -33,7 +34,25 @@ export async function refundAction(input: RefundInput): Promise<PaymentResult> {
   if (!parsed.success) return invalid(parsed.error);
 
   try {
-    const payment = await prisma.$transaction((tx) => refundPayment(tx, parsed.data, Number(me.id)), FINANCE_TX);
+    const payment = await prisma.$transaction(async (tx) => {
+      const p = await refundPayment(tx, parsed.data, Number(me.id));
+      const r = await tx.payment.findUniqueOrThrow({
+        where: { id: p.id },
+        select: { amount: true, method: true, reason: true, invoice: { select: { id: true, invoiceNumber: true, patientId: true } } },
+      });
+      await audit(
+        {
+          userId: Number(me.id),
+          action: "refund",
+          entity: "invoice",
+          entityId: r.invoice.id,
+          patientId: r.invoice.patientId,
+          details: `${r.invoice.invoiceNumber} · ${r.amount.toFixed(2)} ₾ (${r.method === "cash" ? "ნაღდი" : "ბარათი"}) · ${r.reason ?? ""}`,
+        },
+        tx,
+      );
+      return p;
+    }, FINANCE_TX);
     return { ok: true, message: `თანხა დაბრუნდა (ქვითარი ${payment.receiptNumber})`, paymentId: payment.id };
   } catch (error) {
     return financeFailure(error);

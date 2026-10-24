@@ -57,6 +57,9 @@ model User {
   lastName     String   @map("last_name") @db.VarChar(100)
   roleId       Int      @map("role_id")
   isActive     Boolean  @default(true) @map("is_active")
+  /// პაროლის შეცვლისას იზრდება — ძველი სესიები (JWT-ში sv) მაშინვე უქმდება
+  sessionVersion    Int       @default(0) @map("session_version")
+  passwordChangedAt DateTime? @map("password_changed_at") @db.DateTime(0)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
   role         Role     @relation(fields: [roleId], references: [id])
 
@@ -100,6 +103,9 @@ model User {
   favoritedBy          UserFavorite[]       @relation("FavoriteTarget")
   presence             UserPresence?
   chatSettings         UserChatSettings?
+
+  inventoryReceipts  InventoryReceipt[]
+  inventoryMovements InventoryMovement[]
 
   @@index([roleId])
   @@map("users")
@@ -184,6 +190,7 @@ model Patient {
   @@index([updatedById])
   @@map("patients")
   encounterMeasurements EncounterMeasurement[]
+  inventoryMovements    InventoryMovement[]
 }
 
 /// სერვისების კატეგორია (კონსულტაცია, ლაბორატორია, დიაგნოსტიკა...).
@@ -215,6 +222,7 @@ model Service {
   contracts    InsuranceContract[]
   consultationDoctors Doctor[]     @relation("DoctorConsultation")
   medicalOrders       MedicalOrder[]
+  materials           ServiceMaterial[]
 
   @@index([code], map: "idx_services_code")
   @@index([categoryId, isActive], map: "idx_services_category")
@@ -836,6 +844,7 @@ model MedicalOrder {
   resultDocument   PatientDocument? @relation(fields: [resultDocumentId], references: [id])
   createdBy        User?            @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   performedBy      User?            @relation("OrderPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+  inventoryMovements InventoryMovement[]
 
   @@index([type, status, createdAt], map: "idx_medical_orders_queue")
   @@index([patientId, createdAt], map: "idx_medical_orders_patient")
@@ -1100,7 +1109,8 @@ model ConversationMember {
   @@map("conversation_members")
 }
 
-/// შეტყობინება. ფიზიკურად არ იშლება (deleted_at); ძველი ტექსტი — message_revisions.
+/// შეტყობინება. მომხმარებლის წაშლა — deleted_at (ფიზიკურად არ იშლება); ძველი ტექსტი — message_revisions.
+/// ფიზიკურად იშლება მხოლოდ ადმინის გასუფთავებით (admin/chat — src/modules/chat/server/retention.ts).
 /// kind = system: ჯგუფის მოვლენა (event, target_user_id). client_id — კლიენტის UUID (განმეორებითი გაგზავნა დუბლიკატს არ ქმნის).
 model Message {
   id             BigInt              @id @default(autoincrement())
@@ -1193,4 +1203,166 @@ model UserChatSettings {
   user                 User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_chat_settings")
+}
+
+// ─── საწყობი (src/modules/inventory/) ───
+
+enum InventoryCategory {
+  medication
+  consumable
+  reagent
+}
+
+/// receipt — შემოსავალი (+), consumption — გახარჯვა (−), writeoff — ჩამოწერა მიზეზით (−), adjustment — ინვენტარიზაცია (±)
+enum InventoryMovementType {
+  receipt
+  consumption
+  writeoff
+  adjustment
+}
+
+enum InventoryWriteoffReason {
+  expired
+  damaged
+  lost
+  other
+}
+
+model InventorySupplier {
+  id        Int                @id @default(autoincrement())
+  name      String             @unique(map: "uq_inventory_suppliers_name") @db.VarChar(200)
+  taxId     String?            @map("tax_id") @db.VarChar(20)
+  phone     String?            @db.VarChar(50)
+  note      String?            @db.VarChar(500)
+  isActive  Boolean            @default(true) @map("is_active")
+  createdAt DateTime           @default(now()) @map("created_at") @db.DateTime(0)
+  receipts  InventoryReceipt[]
+
+  @@map("inventory_suppliers")
+}
+
+/// დასახელება კატალოგში. არ იშლება — ითიშება (მოძრაობების ისტორიაში რჩება). min_quantity — გაფრთხილების ზღვარი (0 — გარეშე).
+model InventoryItem {
+  id           Int                 @id @default(autoincrement())
+  name         String              @unique(map: "uq_inventory_items_name") @db.VarChar(200)
+  category     InventoryCategory
+  unit         String              @db.VarChar(20)
+  minQuantity  Decimal             @default(0) @map("min_quantity") @db.Decimal(12, 2)
+  tracksExpiry Boolean             @default(true) @map("tracks_expiry")
+  note         String?             @db.VarChar(500)
+  isActive     Boolean             @default(true) @map("is_active")
+  createdAt    DateTime            @map("created_at") @db.DateTime(0)
+  updatedAt    DateTime            @map("updated_at") @db.DateTime(0)
+  batches      InventoryBatch[]
+  movements    InventoryMovement[]
+  serviceNorms ServiceMaterial[]
+
+  @@index([category, isActive], map: "idx_inventory_items_category")
+  @@map("inventory_items")
+}
+
+/// შემოსავლის დოკუმენტი (ზედნადები): რამდენიმე პარტია ერთ მომწოდებლისგან.
+model InventoryReceipt {
+  id             Int                 @id @default(autoincrement())
+  supplierId     Int?                @map("supplier_id")
+  documentNumber String?             @map("document_number") @db.VarChar(50)
+  receivedOn     DateTime            @map("received_on") @db.Date
+  note           String?             @db.VarChar(500)
+  createdById    Int?                @map("created_by")
+  createdAt      DateTime            @map("created_at") @db.DateTime(0)
+  supplier       InventorySupplier?  @relation(fields: [supplierId], references: [id])
+  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  batches        InventoryBatch[]
+  movements      InventoryMovement[]
+
+  @@index([receivedOn], map: "idx_inventory_receipts_received")
+  @@index([supplierId], map: "idx_inventory_receipts_supplier")
+  @@index([createdById], map: "idx_inventory_receipts_created_by")
+  @@map("inventory_receipts")
+}
+
+/// პარტია: ნაშთი (quantity) მცირდება გახარჯვით; ვადა/სერია/ფასი — შემოსავლიდან. გახარჯვა FEFO-თი (stock.ts).
+model InventoryBatch {
+  id               Int                 @id @default(autoincrement())
+  itemId           Int                 @map("item_id")
+  receiptId        Int?                @map("receipt_id")
+  lotNumber        String?             @map("lot_number") @db.VarChar(50)
+  expiryDate       DateTime?           @map("expiry_date") @db.Date
+  unitCost         Decimal?            @map("unit_cost") @db.Decimal(12, 2)
+  receivedQuantity Decimal             @map("received_quantity") @db.Decimal(12, 2)
+  quantity         Decimal             @db.Decimal(12, 2)
+  createdAt        DateTime            @map("created_at") @db.DateTime(0)
+  item             InventoryItem       @relation(fields: [itemId], references: [id])
+  receipt          InventoryReceipt?   @relation(fields: [receiptId], references: [id])
+  movements        InventoryMovement[]
+
+  @@index([itemId, expiryDate], map: "idx_inventory_batches_item")
+  @@index([expiryDate], map: "idx_inventory_batches_expiry")
+  @@index([receiptId], map: "idx_inventory_batches_receipt")
+  @@map("inventory_batches")
+}
+
+/// მოძრაობა (ჟურნალი): quantity — ნიშნით (+ შემოსავალი, − გასავალი). არ იცვლება და არ იშლება.
+model InventoryMovement {
+  id             BigInt                   @id @default(autoincrement())
+  itemId         Int                      @map("item_id")
+  batchId        Int                      @map("batch_id")
+  type           InventoryMovementType
+  quantity       Decimal                  @db.Decimal(12, 2)
+  reason         InventoryWriteoffReason?
+  note           String?                  @db.VarChar(500)
+  receiptId      Int?                     @map("receipt_id")
+  patientId      Int?                     @map("patient_id")
+  medicalOrderId Int?                     @map("medical_order_id")
+  createdById    Int?                     @map("created_by")
+  createdAt      DateTime                 @map("created_at") @db.DateTime(0)
+  item           InventoryItem            @relation(fields: [itemId], references: [id])
+  batch          InventoryBatch           @relation(fields: [batchId], references: [id])
+  receipt        InventoryReceipt?        @relation(fields: [receiptId], references: [id])
+  patient        Patient?                 @relation(fields: [patientId], references: [id])
+  medicalOrder   MedicalOrder?            @relation(fields: [medicalOrderId], references: [id])
+  createdBy      User?                    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([itemId, createdAt], map: "idx_inventory_movements_item")
+  @@index([createdAt], map: "idx_inventory_movements_created")
+  @@index([batchId], map: "idx_inventory_movements_batch")
+  @@index([receiptId], map: "idx_inventory_movements_receipt")
+  @@index([patientId], map: "idx_inventory_movements_patient")
+  @@index([medicalOrderId], map: "idx_inventory_movements_order")
+  @@index([createdById], map: "idx_inventory_movements_created_by")
+  @@map("inventory_movements")
+}
+
+/// სერვისის ნორმა: ერთ შესრულებაზე გასახარჯი მასალა (ექთანი/ლაბორანტი შესრულებისას ხედავს და ასწორებს).
+model ServiceMaterial {
+  serviceId Int           @map("service_id")
+  itemId    Int           @map("item_id")
+  quantity  Decimal       @db.Decimal(12, 2)
+  service   Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@id([serviceId, itemId])
+  @@index([itemId], map: "idx_service_materials_item")
+  @@map("service_materials")
+}
+
+/// შესვლის მცდელობები (src/lib/login-guard.ts): დაბლოკვა ზედიზედ წარუმატებელი ცდების შემდეგ.
+enum LoginAttemptKind {
+  failed
+  blocked
+  success
+  unlock
+}
+
+model LoginAttempt {
+  id        BigInt           @id @default(autoincrement())
+  username  String           @db.VarChar(50)
+  ip        String?          @db.VarChar(45)
+  kind      LoginAttemptKind
+  createdAt DateTime         @map("created_at") @db.DateTime(3)
+
+  @@index([username, createdAt], map: "idx_login_attempts_username")
+  @@index([ip, createdAt], map: "idx_login_attempts_ip")
+  @@index([createdAt], map: "idx_login_attempts_created")
+  @@map("login_attempts")
 }

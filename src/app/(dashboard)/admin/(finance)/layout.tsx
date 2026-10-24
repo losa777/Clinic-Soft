@@ -13,6 +13,7 @@ export default function AdminFinanceLayout({ children }: { children: React.React
           { href: routes.cash, label: "სალარო", icon: "cash" },
           { href: routes.debts, label: "დავალიანებები", icon: "debts" },
           { href: routes.reports, label: "დღის ანგარიში", icon: "reports" },
+          { href: routes.analytics, label: "ფინანსური ანალიზი", icon: "analytics" },
         ]}
         firstExact={false}
       />

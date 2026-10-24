@@ -34,6 +34,8 @@ describe("როლით წვდომა — მარშრუტები 
     }
     assert.equal(routeRedirect("/chat", null), "/login");
     assert.equal(routeRedirect("/chatx", "doctor"), "/doctor");
+    assert.equal(routeRedirect("/account/password", "nurse"), null);
+    assert.equal(routeRedirect("/account/password", null), "/login");
   });
 
   it("შესული მომხმარებელი /login-ზე → საკუთარ გვერდზე; API — თავად ამოწმებს", () => {
@@ -62,18 +64,36 @@ describe("როლით წვდომა — უფლებები (ნ�
     for (const p of ["emr.view", "emr.edit", "documents.sign"] as const) assert.equal(can(r, p), false, p);
   });
 
-  it("ლაბორანტი და ექთანი — მხოლოდ საკუთარი რიგი", () => {
-    assert.deepEqual(user("lab").permissions, ["orders.lab"]);
-    assert.deepEqual(user("nurse").permissions, ["orders.nurse"]);
+  it("ლაბორანტი და ექთანი — საკუთარი რიგი და საწყობიდან გახარჯვა", () => {
+    assert.deepEqual(user("lab").permissions, ["orders.lab", "inventory.view", "inventory.consume"]);
+    assert.deepEqual(user("nurse").permissions, ["orders.nurse", "inventory.view", "inventory.consume"]);
     assert.equal(can(user("lab"), "orders.nurse"), false);
     assert.equal(can(user("nurse"), "emr.view"), false);
+    for (const p of ["inventory.receive", "inventory.manage", "inventory.reports"] as const) assert.equal(can(user("nurse"), p), false, p);
   });
 
   it("ბუღალტერი/დირექტორი — მხოლოდ ნახვა და ანგარიშები", () => {
     for (const role of ["accountant", "director"]) {
       const u = user(role);
       assert.ok(can(u, "reports.daily"));
-      for (const p of ["invoices.create", "payments.create", "emr.view"] as const) assert.equal(can(u, p), false, `${role}: ${p}`);
+      assert.ok(can(u, "inventory.reports"));
+      assert.ok(can(u, "reports.finance"));
+      for (const p of ["invoices.create", "payments.create", "emr.view", "inventory.consume", "inventory.manage"] as const) {
+        assert.equal(can(u, p), false, `${role}: ${p}`);
+      }
     }
+  });
+
+  it("აუდიტის ჟურნალი — ნაგულისხმევად მხოლოდ ადმინს (სხვას — ადმინის მინიჭებით)", () => {
+    assert.ok(can({ roleCode: "admin", permissions: [] }, "audit.view"));
+    for (const role of ["director", "accountant", "registrar", "doctor", "nurse", "lab", "warehouse"]) {
+      assert.equal(can(user(role), "audit.view"), false, role);
+    }
+  });
+
+  it("საწყობის მენეჯერი — მხოლოდ საწყობი", () => {
+    const w = user("warehouse");
+    for (const p of ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"] as const) assert.ok(can(w, p), p);
+    for (const p of ["emr.view", "invoices.view", "orders.nurse"] as const) assert.equal(can(w, p), false, p);
   });
 });

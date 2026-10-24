@@ -1,6 +1,7 @@
 "use server";
 
 import { type ActionFailure, type ActionResult, invalid, success } from "@/lib/action-result";
+import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { type CancelInvoiceInput, cancelInvoiceSchema, type InvoiceInput, invoiceSchema } from "@/modules/finance/schema";
@@ -31,7 +32,15 @@ export async function cancelInvoiceAction(input: CancelInvoiceInput): Promise<Ac
 
   try {
     const number = await prisma.$transaction(
-      (tx) => cancelInvoice(tx, parsed.data.invoiceId, parsed.data.reason, Number(me.id)),
+      async (tx) => {
+        const number = await cancelInvoice(tx, parsed.data.invoiceId, parsed.data.reason, Number(me.id));
+        const inv = await tx.invoice.findUniqueOrThrow({ where: { id: parsed.data.invoiceId }, select: { patientId: true, totalAmount: true } });
+        await audit(
+          { userId: Number(me.id), action: "cancel", entity: "invoice", entityId: parsed.data.invoiceId, patientId: inv.patientId, details: `${number} · ${inv.totalAmount.toFixed(2)} ₾ · ${parsed.data.reason}` },
+          tx,
+        );
+        return number;
+      },
       FINANCE_TX,
     );
     return success(`ინვოისი ${number} გაუქმდა`);

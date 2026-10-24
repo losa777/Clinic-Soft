@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   "cash.shift": "სალაროს ცვლის გახსნა და დახურვა",
   "reports.daily": "დღის ანგარიში",
   "reports.debts": "დავალიანებები (პაციენტების და სადაზღვევოების)",
+  "reports.finance": "ფინანსური ანალიზი: პერიოდი, დინამიკა, ექიმები, სერვისები, დაზღვევა",
   "insurance.manage": "სადაზღვევო კომპანიების და პირობების მართვა",
   "appointments.manage": "ჯავშნების მართვა (სტატუსი, გადატანა, გაუქმება)",
   "appointments.book": "ახალი ჯავშნის შექმნა (მიმართვა, განმეორებითი ვიზიტი)",
@@ -24,6 +25,12 @@ export const PERMISSIONS = {
   "documents.sign": "სამედიცინო დოკუმენტის შექმნა და ხელმოწერა",
   "orders.lab": "ლაბორატორიული და ინსტრუმენტული კვლევების შესრულება",
   "orders.nurse": "ექთნის პროცედურების შესრულება",
+  "audit.view": "აუდიტის ჟურნალი: ვინ, როდის, რა ნახა და შეცვალა",
+  "inventory.view": "საწყობი: ნაშთების და მოძრაობების ნახვა",
+  "inventory.consume": "საწყობი: მასალის გახარჯვა",
+  "inventory.receive": "საწყობი: შემოსავალი მომწოდებლიდან",
+  "inventory.manage": "საწყობი: კატალოგი, მომწოდებლები, ჩამოწერა",
+  "inventory.reports": "საწყობი: ღირებულება და ანგარიშები (CSV)",
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -52,10 +59,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Partial<Record<SystemRoleCode, Permission
     "appointments.book",
   ],
   doctor: ["services.view", "emr.view", "emr.edit", "documents.sign", "appointments.book"],
-  lab: ["orders.lab"],
-  nurse: ["orders.nurse"],
-  accountant: VIEW_AND_REPORTS,
-  director: VIEW_AND_REPORTS,
+  // საწყობი: ექთანი/ლაბორანტი — ნახვა და გახარჯვა (პროცედურისას), ბუღალტერი/დირექტორი — ნახვა და ანგარიშები
+  lab: ["orders.lab", "inventory.view", "inventory.consume"],
+  nurse: ["orders.nurse", "inventory.view", "inventory.consume"],
+  accountant: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports"],
+  director: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports"],
+  warehouse: ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"],
 };
 
 export function isPermission(code: string): code is PermissionCode {

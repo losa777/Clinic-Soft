@@ -11,12 +11,13 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:setup": "tsx --env-file=.env.local scripts/setup-db.ts",
-    "db:seed": "tsx --env-file=.env.local scripts/seed-appointments.ts && tsx --env-file=.env.local --conditions=react-server scripts/seed-finance.ts",
+    "db:seed": "tsx --env-file=.env.local scripts/seed-appointments.ts && tsx --env-file=.env.local --conditions=react-server scripts/seed-finance.ts && tsx --env-file=.env.local --conditions=react-server scripts/seed-inventory.ts",
     "icd10:import": "tsx --env-file=.env.local scripts/import-icd10.ts",
     "user:create": "tsx --env-file=.env.local scripts/create-user.ts",
     "test:integration": "tsx --env-file=.env.local --conditions=react-server --test tests/integration/*.test.ts",
     "scanner:build": "node scanner-agent/build.mjs",
-    "dev:next": "next dev"
+    "dev:next": "next dev",
+    "https:setup": "node scripts/https-setup.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

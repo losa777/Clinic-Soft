@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { type ColumnFiltersState, type SortingState, useTable } from "@tanstack/react-table";
 import { type AppColumnDef, tableFeatureSet } from "@/lib/table";
-import { MoreHorizontal, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
+import { LockOpen, MoreHorizontal, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { deleteUser, setUserActive } from "./actions";
+import { deleteUser, setUserActive, unlockUser } from "./actions";
 import { UserDialog } from "./user-dialog";
 
 export type UserRow = {
@@ -27,6 +27,8 @@ export type UserRow = {
   firstName: string;
   lastName: string;
   isActive: boolean;
+  /** შესვლა დროებით დაბლოკილია (წარუმატებელი ცდები) — „HH:MM-მდე“ */
+  lockedUntil: string | null;
   roleId: number;
   roleName: string;
   createdAt: number;
@@ -81,6 +83,14 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
     });
   }
 
+  function unlock(user: UserRow) {
+    startTransition(async () => {
+      const res = await unlockUser(user.id);
+      if (res.ok) toast.success(res.message);
+      else toast.error(res.error);
+    });
+  }
+
   function confirmDelete() {
     if (!deleting) return;
     startTransition(async () => {
@@ -120,14 +130,22 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
         header: "სტატუსი",
         accessorFn: (u) => (u.isActive ? 1 : 0),
         filterFn: (row, _id, active: boolean) => row.original.isActive === active,
-        cell: ({ row }) =>
-          row.original.isActive ? (
-            <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">აქტიური</Badge>
-          ) : (
-            <Badge variant="outline" className="text-muted-foreground">
-              გათიშული
-            </Badge>
-          ),
+        cell: ({ row: { original: u } }) => (
+          <div className="flex flex-wrap gap-1">
+            {u.isActive ? (
+              <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">აქტიური</Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">
+                გათიშული
+              </Badge>
+            )}
+            {u.lockedUntil && (
+              <Badge variant="destructive" title="ზედიზედ წარუმატებელი შესვლის ცდები">
+                დაბლოკილია {u.lockedUntil}-მდე
+              </Badge>
+            )}
+          </div>
+        ),
       },
       {
         id: "createdAt",
@@ -153,6 +171,12 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
                   <Pencil />
                   რედაქტირება
                 </DropdownMenuItem>
+                {u.lockedUntil && (
+                  <DropdownMenuItem onClick={() => unlock(u)} disabled={pending}>
+                    <LockOpen />
+                    განბლოკვა
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => toggleActive(u)} disabled={isSelf || pending}>
                   <Power />
                   {u.isActive ? "გათიშვა" : "გააქტიურება"}
