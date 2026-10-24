@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const user = await requireUser();
 
   return (
-    <ChatProvider me={{ id: Number(user.id), firstName: user.firstName, lastName: user.lastName }}>
+    <ChatProvider me={{ id: Number(user.id), firstName: user.firstName, lastName: user.lastName, avatar: user.avatar }}>
       <Header user={user} />
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6">{children}</main>
       <ChatPopup />

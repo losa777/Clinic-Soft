@@ -72,6 +72,8 @@ model User {
   /// ბოლოს არჩეული როლი (რამდენიმე როლის მომხმარებელი); null ან მოხსნილი როლი — მთავარი
   activeRoleId Int?     @map("active_role_id")
   isActive     Boolean  @default(true) @map("is_active")
+  /// პროფილის ფოტოს ვერსია (unix წამები, ბრაუზერის ქეშისთვის); null — ფოტო არ არის (src/lib/avatars.ts)
+  avatarVersion Int?    @map("avatar_version")
   /// პაროლის შეცვლისას იზრდება — ძველი სესიები (JWT-ში sv) მაშინვე უქმდება
   sessionVersion    Int       @default(0) @map("session_version")
   passwordChangedAt DateTime? @map("password_changed_at") @db.DateTime(0)

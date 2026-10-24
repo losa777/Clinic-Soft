@@ -4,6 +4,7 @@ import { z } from "zod";
 import { type ActionResult, failure, invalid, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import { detectMimeType, removeDocuments, storeDocument } from "@/lib/document-storage";
 import { formatFileSize, MAX_FILE_SIZE } from "@/lib/patient-schema";
 import { type ProcedureDoneInput, procedureDoneSchema } from "@/modules/emr/schema";
@@ -66,6 +67,7 @@ export async function markSampleTakenAction(orderId: number): Promise<ActionResu
     }
     return count;
   }, EMR_TX);
+  if (updated) emitLive(["orders"]);
   return updated ? success("ნიმუში აღებულია") : failure("დანიშნულება ვერ მოიძებნა ან სტატუსი უკვე შეცვლილია");
 }
 
@@ -149,6 +151,7 @@ export async function submitResultAction(formData: FormData): Promise<ActionResu
       });
       return o.serviceName;
     }, EMR_TX);
+    emitLive(["orders", "inventory"]);
     return success(`შედეგი შენახულია: ${name}`);
   } catch (error) {
     if (stored) await removeDocuments([stored.path]);
@@ -189,6 +192,7 @@ export async function markProcedureDoneAction(input: ProcedureDoneInput & { mate
       });
       return o.serviceName;
     }, EMR_TX);
+    emitLive(["orders", "inventory"]);
     return success(`შესრულდა: ${name}`);
   } catch (error) {
     return fulfillmentFailure(error);

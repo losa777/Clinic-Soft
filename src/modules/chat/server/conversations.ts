@@ -44,6 +44,7 @@ type SummaryRow = {
   peerId: number | null;
   peerFirst: string | null;
   peerLast: string | null;
+  peerAvatar: number | null;
   peerActive: unknown;
   peerRole: string | null;
 };
@@ -58,7 +59,7 @@ async function querySummaries(db: Db, userId: number, filter: Prisma.Sql): Promi
            ls.first_name AS lmSenderFirst, ls.last_name AS lmSenderLast,
            lt.first_name AS lmTargetFirst, lt.last_name AS lmTargetLast,
            (SELECT COUNT(*) FROM message_attachments a WHERE a.message_id = lm.id) AS lmAttachments,
-           p.id AS peerId, p.first_name AS peerFirst, p.last_name AS peerLast, p.is_active AS peerActive, pr.name AS peerRole
+           p.id AS peerId, p.first_name AS peerFirst, p.last_name AS peerLast, p.avatar_version AS peerAvatar, p.is_active AS peerActive, pr.name AS peerRole
     FROM conversation_members m
     JOIN conversations c ON c.id = m.conversation_id
     LEFT JOIN messages lm ON lm.id = c.last_message_id
@@ -81,6 +82,7 @@ function toSummary(r: SummaryRow, peerPresence: Presence | null): ConversationSu
           id: r.peerId,
           firstName: r.peerFirst ?? "",
           lastName: r.peerLast ?? "",
+          avatar: r.peerAvatar === null ? null : Number(r.peerAvatar),
           roleName: r.peerRole ?? "",
           isActive: bool(r.peerActive),
           presence: peerPresence,
@@ -161,7 +163,7 @@ export async function getConversation(db: Db, userId: number, conversationId: nu
     select: {
       role: true,
       lastReadMessageId: true,
-      user: { select: { id: true, firstName: true, lastName: true, isActive: true, role: { select: { name: true } } } },
+      user: { select: { id: true, firstName: true, lastName: true, avatarVersion: true, isActive: true, role: { select: { name: true } } } },
     },
   });
   const presence = await loadPresence(db, members.map((m) => m.user.id));

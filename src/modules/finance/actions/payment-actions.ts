@@ -5,6 +5,7 @@ import { type ActionFailure, failure, invalid } from "@/lib/action-result";
 import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import { fromTetri } from "@/modules/finance/calc";
 import { type PaymentInput, paymentSchema, type RefundInput, refundSchema } from "@/modules/finance/schema";
 import { FINANCE_TX, financeFailure } from "@/modules/finance/server/errors";
@@ -21,6 +22,7 @@ export async function acceptPaymentAction(input: PaymentInput): Promise<PaymentR
   try {
     const payment = await prisma.$transaction((tx) => acceptPayment(tx, parsed.data, Number(me.id)), FINANCE_TX);
     const change = payment.change ? `, ხურდა: ${fromTetri(payment.change)} ₾` : "";
+    emitLive(["invoices"]);
     return { ok: true, message: `გადახდა მიღებულია (ქვითარი ${payment.receiptNumber})${change}`, paymentId: payment.id };
   } catch (error) {
     return financeFailure(error);
@@ -53,6 +55,7 @@ export async function refundAction(input: RefundInput): Promise<PaymentResult> {
       );
       return p;
     }, FINANCE_TX);
+    emitLive(["invoices"]);
     return { ok: true, message: `თანხა დაბრუნდა (ქვითარი ${payment.receiptNumber})`, paymentId: payment.id };
   } catch (error) {
     return financeFailure(error);

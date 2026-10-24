@@ -4,6 +4,7 @@ import { z } from "zod";
 import { type ActionResult, invalid, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import { completeEncounter } from "@/modules/emr/server/completion";
 import { EMR_TX, emrFailure } from "@/modules/emr/server/errors";
 
@@ -19,6 +20,8 @@ export async function completeEncounterAction(input: { encounterId: number; vers
 
   try {
     const message = await prisma.$transaction((tx) => completeEncounter(tx, { encounterId, version, userId }), EMR_TX);
+    // დასრულება: ჯავშანი, ინვოისი და დანიშნულებები (ექთნის/ლაბორანტის რიგი)
+    emitLive(["appointments", "invoices", "orders"], [userId]);
     return success(message);
   } catch (error) {
     return emrFailure(error);

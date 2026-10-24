@@ -3,6 +3,8 @@ import type { DefaultSession } from "next-auth";
 interface ClinicUserFields {
   firstName: string;
   lastName: string;
+  /** პროფილის ფოტოს ვერსია (src/lib/avatar-url.ts); null — ფოტო არ არის */
+  avatar: number | null;
   /** აქტიური როლი (რამდენიმე როლის მომხმარებელს — ბოლოს არჩეული) */
   roleCode: string;
   roleName: string;

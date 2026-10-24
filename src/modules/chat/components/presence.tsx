@@ -5,6 +5,7 @@ import { usePresence } from "@/modules/chat/client/hooks";
 import { PRESENCE_LABELS } from "@/modules/chat/presence";
 import { lastSeenText } from "@/modules/chat/time";
 import type { Presence, PresenceStatus } from "@/modules/chat/types";
+import { Avatar, type AvatarUser } from "@/components/user-avatar";
 import { cn } from "@/lib/utils";
 
 const DOT_COLORS: Record<PresenceStatus, string> = {
@@ -36,36 +37,21 @@ export function UserPresenceDot({ userId, className }: { userId: number; classNa
   return <PresenceDot presence={usePresence(userId)} className={className} />;
 }
 
-const AVATAR_TINTS = [
-  "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200",
-  "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200",
-  "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200",
-  "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
-  "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200",
-  "bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-200",
-];
-
 const SIZES = { sm: "size-8 text-xs", md: "size-10 text-sm" } as const;
 
-/** ინიციალები + სტატუსის წერტილი (კუთხეში). */
+/** ფოტო ან ინიციალები (src/components/user-avatar.tsx) + სტატუსის წერტილი (კუთხეში). */
 export function UserAvatar({
   user,
   size = "md",
   showPresence = true,
 }: {
-  user: { id: number; firstName: string; lastName: string };
+  user: AvatarUser;
   size?: keyof typeof SIZES;
   showPresence?: boolean;
 }) {
-  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`;
   return (
     <span className="relative inline-flex shrink-0" aria-hidden={!showPresence}>
-      <span
-        className={cn("inline-flex items-center justify-center rounded-full font-medium select-none", SIZES[size], AVATAR_TINTS[user.id % AVATAR_TINTS.length])}
-        aria-hidden
-      >
-        {initials}
-      </span>
+      <Avatar user={user} className={SIZES[size]} />
       {showPresence && <UserPresenceDot userId={user.id} className="absolute -right-0.5 -bottom-0.5" />}
     </span>
   );

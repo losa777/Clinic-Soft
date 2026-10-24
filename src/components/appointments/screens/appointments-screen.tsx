@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { AppointmentFilters } from "../appointment-filters";
 import { AppointmentRowActions } from "../appointment-row-actions";
 import { AppointmentStatusBadge } from "../appointment-status-badge";
+import { LiveRefresh } from "@/components/live-refresh";
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -44,6 +45,7 @@ export async function AppointmentsScreen({ routes, params }: { routes: Appointme
 
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["appointments"]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">დღის ჯავშნები</h1>

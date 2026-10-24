@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { type ActionResult, failure, isUniqueViolation, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import { managesGeneral } from "@/modules/inventory/access";
 import { type InventoryCategoryValue, MEDICAL_CATEGORIES } from "@/modules/inventory/labels";
 import { INVENTORY_ROUTES } from "@/modules/inventory/routes";
@@ -32,6 +33,7 @@ import { applyCount, consume, createReceipt, writeOff } from "@/modules/inventor
 /** საწყობის ყველა გვერდი (ყველა როლის) — ნაშთი ყველგან ერთნაირად უნდა ჩანდეს. */
 function revalidateInventory() {
   for (const r of Object.values(INVENTORY_ROUTES)) revalidatePath(r.stock, "layout");
+  emitLive(["inventory"]);
 }
 
 const invalidInput = (fieldErrors: Record<string, string>) => failure("შეასწორეთ მონიშნული ველები", fieldErrors);

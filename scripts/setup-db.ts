@@ -1116,6 +1116,8 @@ async function createSecurityTables() {
  */
 async function createUserRoleTables() {
   await ensureColumn("users", "active_role_id", "INT NULL AFTER role_id");
+  // პროფილის ფოტო: ვერსია (unix წამები) — ფაილები საცავში (src/lib/avatars.ts); NULL — ფოტო არ არის
+  await ensureColumn("users", "avatar_version", "INT NULL AFTER is_active");
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS user_roles (
       user_id INT NOT NULL,

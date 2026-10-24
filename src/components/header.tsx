@@ -4,6 +4,7 @@ import type { Session } from "next-auth";
 import { Logo } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
 import { RoleSwitcher } from "@/components/role-switcher";
+import { Avatar } from "@/components/user-avatar";
 import { ThemeToggle } from "@/components/theme";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { logout } from "@/lib/auth-actions";
@@ -19,11 +20,17 @@ export function Header({ user }: { user: Session["user"] }) {
         </Link>
 
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <div className="min-w-0 text-right leading-tight">
-            <p className="truncate text-sm font-medium">
-              {user.firstName} {user.lastName}
-            </p>
-            <RoleSwitcher roles={user.roles} active={{ code: user.roleCode, name: user.roleName }} />
+          <div className="flex min-w-0 items-center gap-2.5">
+            {/* ფოტო → საკუთარი პროფილი (ფოტოს შეცვლა, პაროლი) */}
+            <Link href="/account/profile" className="shrink-0 rounded-full" aria-label="ჩემი პროფილი" title="ჩემი პროფილი">
+              <Avatar user={{ id: Number(user.id), firstName: user.firstName, lastName: user.lastName, avatar: user.avatar }} className="size-9 text-sm" />
+            </Link>
+            <div className="min-w-0 text-right leading-tight">
+              <Link href="/account/profile" className="block truncate text-sm font-medium hover:underline">
+                {user.firstName} {user.lastName}
+              </Link>
+              <RoleSwitcher roles={user.roles} active={{ code: user.roleCode, name: user.roleName }} />
+            </div>
           </div>
           <ChatHeaderButton />
           <NotificationBell />

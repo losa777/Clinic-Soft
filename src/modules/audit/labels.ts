@@ -27,6 +27,8 @@ export const ACTION_LABELS: Record<string, string> = {
   edit: "რედაქტირება",
   delete: "წაშლა",
   upload: "ატვირთვა",
+  avatar_upload: "პროფილის ფოტოს ატვირთვა",
+  avatar_remove: "პროფილის ფოტოს წაშლა",
   activate: "გააქტიურება",
   deactivate: "გათიშვა",
   start: "დაწყება",

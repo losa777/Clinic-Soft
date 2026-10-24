@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 import { randomId } from "@/lib/browser-compat";
+import type { LiveEvent } from "@/lib/live-types";
 import { CHAT_SOCKET_PATH, MESSAGE_PAGE_SIZE, QUOTE_LENGTH, TYPING_SEND_MS, TYPING_SHOW_MS } from "@/modules/chat/config";
 import { fullName, previewText, snippet } from "@/modules/chat/format";
 import { idleMs, trackActivity } from "@/modules/chat/client/activity";
@@ -36,6 +37,9 @@ const SERVER_DISCONNECT_RETRY_MS = 3_000;
 const READ_DEBOUNCE_MS = 400;
 
 export type MessageListener = (message: ChatMessage, conversation: ConversationSummary | undefined) => void;
+
+/** „ცოცხალი“ განახლების მსმენელი; null — კავშირი აღდგა (შეიძლება რაიმე გამოგვრჩა — ყველა თემა). */
+export type LiveListener = (event: LiveEvent | null) => void;
 
 const errorText = (error: unknown) => (error instanceof ChatApiError ? error.message : "შეცდომა, სცადეთ თავიდან");
 
@@ -77,6 +81,7 @@ export class ChatClient {
   private typingSentAt = new Map<number, number>();
   private pendingSeq = 0;
   private messageListeners = new Set<MessageListener>();
+  private liveListeners = new Set<LiveListener>();
   private refreshing = new Map<number, Promise<void>>();
   /** clientId → ატვირთვის ფაილები (ხელახლა ცდისთვის; store-ში მხოლოდ preview) */
   private outgoingFiles = new Map<string, File[]>();
@@ -143,7 +148,10 @@ export class ChatClient {
     socket.on("connect", () => {
       const reconnected = this.state.everConnected;
       this.setState((s) => ({ ...s, connection: "connected", everConnected: true }));
-      if (reconnected) void this.resync();
+      if (reconnected) {
+        void this.resync();
+        for (const l of this.liveListeners) l(null);
+      }
     });
     socket.on("disconnect", (reason) => {
       if (this.sessionEnded) return;
@@ -190,6 +198,15 @@ export class ChatClient {
     });
     socket.on("presence", (p) => this.applyPresence([p]));
     socket.on("presence:snapshot", (list) => this.applySnapshot(list));
+    socket.on("live:changed", (e) => {
+      for (const l of this.liveListeners) l(e);
+    });
+  }
+
+  /** სხვა მოდულების ცვლილების სიგნალი (src/components/live-refresh.tsx). აბრუნებს გამოწერის გაუქმებას. */
+  onLive(listener: LiveListener): () => void {
+    this.liveListeners.add(listener);
+    return () => this.liveListeners.delete(listener);
   }
 
   /**

@@ -14,7 +14,7 @@ export const DEFAULT_DOCUMENTS_DIR = path.join(/*turbopackIgnore: true*/ process
  * ამიტომ საქაღალდის გადატანა შეიძლება (ფაილები გადაიტანეთ და შეცვალეთ DOCUMENTS_DIR).
  * საქაღალდის სარეზერვო ასლი ბაზასთან ერთად უნდა კეთდებოდეს.
  */
-function documentsRoot(): string {
+export function documentsRoot(): string {
   return path.resolve(process.env.DOCUMENTS_DIR?.trim() || DEFAULT_DOCUMENTS_DIR);
 }
 

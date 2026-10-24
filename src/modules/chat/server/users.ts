@@ -14,6 +14,7 @@ const CONTACT_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
+  avatarVersion: true,
   isActive: true,
   role: { select: { name: true } },
 } as const satisfies Prisma.UserSelect;

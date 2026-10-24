@@ -26,6 +26,7 @@ import { addDays, formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/l
 import { requirePermission } from "@/lib/dal";
 import { notifyArrival } from "@/lib/notifications";
 import { prisma } from "@/lib/db";
+import { emitAppointmentChange } from "@/lib/live";
 import { type PatientSearchResult, searchPatients } from "@/lib/patient-records";
 import { can } from "@/lib/permissions";
 import { type NewPatientPolicyInput, newPatientPolicySchema } from "@/modules/finance/schema";
@@ -202,6 +203,7 @@ export async function createAppointment(input: AppointmentInput): Promise<Bookin
     });
   });
   if ("ok" in result) return result;
+  await emitAppointmentChange(result.id);
 
   const { date } = tbilisiParts(start);
   return { ok: true, message: `ვიზიტი დაიჯავშნა: ${formatDate(date)}, ${formatTime(start)}`, appointmentId: result.id };
@@ -233,6 +235,7 @@ export async function rescheduleAppointment(input: RescheduleInput): Promise<Act
     return count;
   });
   if (typeof result !== "number") return result;
+  await emitAppointmentChange(appointment.id);
 
   return success(`ჯავშანი გადაიტანეს: ${formatDate(tbilisiParts(start).date)}, ${formatTime(start)}`);
 }
@@ -267,6 +270,7 @@ export async function changeAppointmentStatus(input: StatusChangeInput): Promise
   });
   if (count === 0) return failure("ჯავშანი ამასობაში შეიცვალა — განაახლეთ გვერდი");
   if (status === "arrived") await notifyArrival(prisma, appointmentId);
+  await emitAppointmentChange(appointmentId);
   return success(`სტატუსი: ${appointmentStatusLabel(status)}`);
 }
 
@@ -287,5 +291,6 @@ export async function cancelAppointment(input: AppointmentCancelInput): Promise<
     },
   });
   if (count === 0) return failure("ჯავშანი ვერ მოიძებნა, უკვე გაუქმებულია, დასრულებულია ან პაციენტი მიღებაზეა");
+  await emitAppointmentChange(parsed.data.appointmentId);
   return success("ჯავშანი გაუქმდა");
 }

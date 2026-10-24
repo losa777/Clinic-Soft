@@ -14,6 +14,7 @@ import type { MaterialItem } from "@/modules/inventory/components/materials-edit
 import { isMedical } from "@/modules/inventory/labels";
 import { loadNorms } from "@/modules/inventory/server/norms";
 import { loadStock } from "@/modules/inventory/server/stock";
+import { LiveRefresh } from "@/components/live-refresh";
 
 export const LAB_HOME = "/lab";
 export const NURSE_HOME = "/nurse";
@@ -42,6 +43,7 @@ export async function OrderQueueScreen({ kind, params, canConsume }: { kind: Kin
 
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["orders", "inventory"]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{c.title}</h1>

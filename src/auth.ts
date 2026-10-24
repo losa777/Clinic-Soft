@@ -44,6 +44,7 @@ async function loadSessionUser(where: { id: number } | { username: string }) {
       id: String(user.id),
       firstName: user.firstName,
       lastName: user.lastName,
+      avatar: user.avatarVersion,
       roleCode: active.code,
       roleName: active.name,
       roles: roles.map((r) => ({ code: r.code, name: r.name })),
@@ -116,6 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = token.id;
       session.user.firstName = token.firstName;
       session.user.lastName = token.lastName;
+      session.user.avatar = token.avatar ?? null;
       session.user.roleCode = token.roleCode;
       session.user.roleName = token.roleName;
       session.user.roles = token.roles ?? [{ code: token.roleCode, name: token.roleName }];

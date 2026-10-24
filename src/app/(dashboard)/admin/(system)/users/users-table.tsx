@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Avatar } from "@/components/user-avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteUser, setUserActive, unlockUser } from "./actions";
 import { UserDialog } from "./user-dialog";
@@ -26,6 +27,8 @@ export type UserRow = {
   username: string;
   firstName: string;
   lastName: string;
+  /** პროფილის ფოტოს ვერსია; null — ინიციალები */
+  avatar: number | null;
   isActive: boolean;
   /** შესვლა დროებით დაბლოკილია (წარუმატებელი ცდები) — „HH:MM-მდე“ */
   lockedUntil: string | null;
@@ -61,7 +64,9 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
 
-  const [editing, setEditing] = useState<UserRow | null>(null);
+  // id-ით: ფოტოს შეცვლის შემდეგ (router.refresh) დიალოგი ახალ მონაცემებს აჩვენებს
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const editing = data.find((u) => u.id === editingId) ?? null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState<UserRow | null>(null);
   const [pending, startTransition] = useTransition();
@@ -74,7 +79,7 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
   }, [roleFilter, statusFilter]);
 
   function openDialog(user: UserRow | null) {
-    setEditing(user);
+    setEditingId(user?.id ?? null);
     setDialogOpen(true);
   }
 
@@ -112,12 +117,15 @@ export function UsersTable({ data, roles, currentUserId }: { data: UserRow[]; ro
         header: "სახელი, გვარი",
         accessorFn: (u) => `${u.lastName} ${u.firstName}`,
         cell: ({ row: { original: u } }) => (
-          <div className="min-w-0">
-            <p className="font-medium">
-              {u.firstName} {u.lastName}
-              {u.id === currentUserId && <span className="ml-1.5 text-xs font-normal text-muted-foreground">(თქვენ)</span>}
-            </p>
-            <p className="text-xs text-muted-foreground">{u.username}</p>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Avatar user={u} className="size-8 text-xs" />
+            <div className="min-w-0">
+              <p className="font-medium">
+                {u.firstName} {u.lastName}
+                {u.id === currentUserId && <span className="ml-1.5 text-xs font-normal text-muted-foreground">(თქვენ)</span>}
+              </p>
+              <p className="text-xs text-muted-foreground">{u.username}</p>
+            </div>
           </div>
         ),
       },

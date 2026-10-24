@@ -38,6 +38,7 @@ import { dateOnly } from "@/modules/inventory/server/db";
 import { loadNormServices } from "@/modules/inventory/server/norms";
 import { groupCategories, listMovements, loadItem, loadPickerData, loadStock } from "@/modules/inventory/server/stock";
 import { expiryStatus, formatQuantity, fromDecimal, inputQuantity } from "@/modules/inventory/stock";
+import { LiveRefresh } from "@/components/live-refresh";
 
 /**
  * საწყობის ეკრანები — როლზე დამოუკიდებელი (გვერდები: src/app/(dashboard)/warehouse/, admin/inventory/).
@@ -81,6 +82,7 @@ export async function StockScreen({ routes, user, params }: { routes: InventoryR
   const expiry = active.filter((r) => r.expiry === "expired" || r.expiry === "expiring").length;
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["inventory"]} />
       <Header
         title="ნაშთები"
         description={`${active.length} დასახელება${low ? ` · მცირე ან ამოწურული: ${low}` : ""}${expiry ? ` · ვადის გაფრთხილება: ${expiry}` : ""}`}
@@ -123,6 +125,7 @@ export async function ItemScreen({ routes, user, rawId }: { routes: InventoryRou
   const showCost = can(user, "inventory.reports");
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["inventory"]} />
       <Link href={routes.stock} className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />
         ნაშთები
@@ -317,6 +320,7 @@ export async function MovementsScreen({ routes, user, params }: { routes: Invent
   const query = { from: period.from, to: period.to, type, item: itemId, group: group === "all" ? null : group };
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["inventory"]} />
       <Header title="მოძრაობები" description={`${formatDate(period.from)} — ${formatDate(period.to)} · ${result.count} ჩანაწერი`}>
         {can(user, "inventory.reports") && <ExportLink href={withParams("/api/inventory/movements", query)} />}
       </Header>

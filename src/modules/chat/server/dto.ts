@@ -5,7 +5,7 @@ import type { ChatMessage, ChatUser, SystemEvent, UserRef } from "@/modules/chat
 
 /** ბაზის ჩანაწერები → API-ს ფორმა (types.ts). */
 
-const USER_REF = { select: { id: true, firstName: true, lastName: true } } as const;
+const USER_REF = { select: { id: true, firstName: true, lastName: true, avatarVersion: true } } as const;
 
 /** შეტყობინება ავტორით, პასუხის ნაწყვეტით და ფაილებით: Prisma კავშირებს ცალკე, IN-მოთხოვნებით ტვირთავს (N+1-ის გარეშე). */
 export const MESSAGE_SELECT = {
@@ -31,11 +31,18 @@ export const MESSAGE_SELECT = {
 
 export type MessageRow = Prisma.MessageGetPayload<{ select: typeof MESSAGE_SELECT }>;
 
-export function toUserRef(u: { id: number; firstName: string; lastName: string }): UserRef {
-  return { id: u.id, firstName: u.firstName, lastName: u.lastName };
+export function toUserRef(u: { id: number; firstName: string; lastName: string; avatarVersion: number | null }): UserRef {
+  return { id: u.id, firstName: u.firstName, lastName: u.lastName, avatar: u.avatarVersion };
 }
 
-export function toChatUser(u: { id: number; firstName: string; lastName: string; isActive: boolean; role: { name: string } }): ChatUser {
+export function toChatUser(u: {
+  id: number;
+  firstName: string;
+  lastName: string;
+  avatarVersion: number | null;
+  isActive: boolean;
+  role: { name: string };
+}): ChatUser {
   return { ...toUserRef(u), roleName: u.role.name, isActive: u.isActive };
 }
 

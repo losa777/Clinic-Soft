@@ -20,6 +20,7 @@ import { insurerDebts, listDebts } from "@/modules/finance/server/debts";
 import { prisma } from "@/lib/db";
 import { loadReceipt } from "@/modules/finance/server/receipts";
 import { loadCashiers, loadDailyReport } from "@/modules/finance/server/reports";
+import { LiveRefresh } from "@/components/live-refresh";
 
 type User = Session["user"];
 
@@ -38,6 +39,7 @@ export async function DebtsScreen({ routes, params }: { routes: FinanceRoutes; p
 
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["invoices"]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">დავალიანებები</h1>
@@ -80,6 +82,7 @@ export async function ReportsScreen({ routes, params }: { routes: FinanceRoutes;
 
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["invoices"]} />
       <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
         <div>
           <h1 className="text-xl font-semibold">დღის ანგარიში</h1>
@@ -112,6 +115,7 @@ export async function CashScreen({ user }: { user: User }) {
   const [shift, recent] = await Promise.all([loadOpenShift(Number(user.id)), loadRecentShifts(Number(user.id))]);
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["invoices"]} />
       <div>
         <h1 className="text-xl font-semibold">სალარო</h1>
         <p className="text-sm text-muted-foreground">ნაღდი გადახდის მიღება და დაბრუნება შეიძლება მხოლოდ ღია ცვლით.</p>

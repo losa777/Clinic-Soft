@@ -4,6 +4,7 @@ import { z } from "zod";
 import { type ActionFailure, type ActionResult, failure, invalid, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import { allergyMatches } from "@/modules/emr/allergy";
 import { type OrderInput, orderSchema, type PrescriptionInput, prescriptionSchema } from "@/modules/emr/schema";
 import { audit } from "@/lib/audit";
@@ -100,6 +101,7 @@ export async function addOrderAction(input: OrderInput): Promise<ActionResult> {
       await audit({ userId, action: "create", entity: "order", entityId: o.id, patientId: e.patientId, details: `${type}: ${service.name}` }, tx);
       return service.name;
     }, EMR_TX);
+    emitLive(["orders"]);
     return success(`დაინიშნა: ${name}`);
   } catch (error) {
     return emrFailure(error);
@@ -120,6 +122,7 @@ export async function cancelOrderAction(id: number): Promise<ActionResult> {
       if (!count) throw new EmrError("შესრულება უკვე დაწყებულია — გაუქმება შეუძლებელია");
       await audit({ userId, action: "cancel", entity: "order", entityId: id, patientId: e.patientId }, tx);
     }, EMR_TX);
+    emitLive(["orders"]);
     return success("დანიშნულება გაუქმდა");
   } catch (error) {
     return emrFailure(error);

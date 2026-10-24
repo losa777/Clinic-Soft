@@ -15,6 +15,7 @@ import { loadDoctorProfile, loadOwnAppointment, loadSchedule, type ScheduleRow }
 import { DateInput, FilterBar, FilterField, NativeSelect, Pager } from "@/modules/finance/components/filters";
 import { dateParam, param, positiveInt, type SearchParams, withParams } from "@/modules/finance/params";
 import { PatientRecord } from "./patient-record";
+import { LiveRefresh } from "@/components/live-refresh";
 
 type User = Session["user"];
 
@@ -68,6 +69,7 @@ export async function DoctorHomeScreen({ user, params }: { user: User; params: S
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+      <LiveRefresh topics={["appointments"]} doctorUserId={Number(user.id)} />
         <div>
           <h1 className="text-lg font-semibold">
             {view === "week" ? `კვირა: ${formatDate(from)} — ${formatDate(addDays(from, 6))}` : `${formatDate(date)}, ${weekdayName(date)}`}

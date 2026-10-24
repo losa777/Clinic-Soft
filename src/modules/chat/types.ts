@@ -3,6 +3,8 @@
  * BIGINT id-ები Number-ად გადადის — 2^53-მდე უსაფრთხოა.
  */
 
+import type { LiveEvent } from "@/lib/live-types";
+
 export type ConversationType = "direct" | "group";
 export type MemberRole = "owner" | "member";
 
@@ -15,7 +17,8 @@ export type Presence = { status: PresenceStatus; lastSeenAt: string | null };
 /** ხელით დაყენებული სტატუსი: dnd — „არ შემაწუხოთ“, null — ავტომატური */
 export type ManualStatus = "dnd" | null;
 
-export type UserRef = { id: number; firstName: string; lastName: string };
+/** avatar — პროფილის ფოტოს ვერსია (src/lib/avatar-url.ts); null — ინიციალები */
+export type UserRef = { id: number; firstName: string; lastName: string; avatar: number | null };
 
 export type ChatUser = UserRef & { roleName: string; isActive: boolean };
 
@@ -100,6 +103,8 @@ export interface ServerToClientEvents {
   "session:ended": (e: { reason: "logout" | "expired" | "deactivated" }) => void;
   /** დაკავშირებისას: ვისი სესიით (cookie) მუშაობს კავშირი — ტაბი ამოწმებს, იგივე მომხმარებელია თუ არა */
   "session:user": (e: { userId: number }) => void;
+  /** სხვა მოდულების მონაცემები შეიცვალა (ჯავშნები, ინვოისები...) — ღია გვერდები ახლდება (src/lib/live.ts) */
+  "live:changed": (e: LiveEvent) => void;
 }
 
 /** ბრაუზერი → სერვერი */

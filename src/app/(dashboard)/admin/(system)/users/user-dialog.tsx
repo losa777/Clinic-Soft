@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { AvatarEditor } from "@/components/avatar-editor";
 import { FormField } from "@/components/form-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ export function UserDialog({ open, onOpenChange, user, roles, isSelf }: Props) {
             {user ? `${user.firstName} ${user.lastName} (${user.username})` : "შეავსეთ ყველა ველი"}
           </DialogDescription>
         </DialogHeader>
+        {/* ფოტო ცალკე ინახება (მაშინვე), ფორმის „შენახვისგან“ დამოუკიდებლად */}
+        {user && <AvatarEditor user={user} forUserId={user.id} />}
         {/* key: ყოველ გახსნაზე ფორმა თავიდან ივსება */}
         <UserForm key={user?.id ?? "new"} user={user} roles={roles} isSelf={isSelf} onDone={() => onOpenChange(false)} />
       </DialogContent>

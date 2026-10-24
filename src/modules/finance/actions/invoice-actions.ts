@@ -4,6 +4,7 @@ import { type ActionFailure, type ActionResult, invalid, success } from "@/lib/a
 import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import { type CancelInvoiceInput, cancelInvoiceSchema, type InvoiceInput, invoiceSchema } from "@/modules/finance/schema";
 import { FINANCE_TX, financeFailure } from "@/modules/finance/server/errors";
 import { cancelInvoice, createInvoice } from "@/modules/finance/server/invoices";
@@ -18,6 +19,8 @@ export async function createInvoiceAction(input: InvoiceInput): Promise<InvoiceC
 
   try {
     const invoice = await prisma.$transaction((tx) => createInvoice(tx, parsed.data, Number(me.id)), FINANCE_TX);
+    // ინვოისი ექიმით: „მობრძანდა“ / ცოცხალი რიგი — ექიმის მომლოდინეები
+    emitLive(["invoices", "appointments"], [parsed.data.doctorId]);
     return { ok: true, message: `ინვოისი შეიქმნა: ${invoice.number}`, invoiceId: invoice.id };
   } catch (error) {
     return financeFailure(error);
@@ -43,6 +46,7 @@ export async function cancelInvoiceAction(input: CancelInvoiceInput): Promise<Ac
       },
       FINANCE_TX,
     );
+    emitLive(["invoices", "appointments"]);
     return success(`ინვოისი ${number} გაუქმდა`);
   } catch (error) {
     return financeFailure(error);

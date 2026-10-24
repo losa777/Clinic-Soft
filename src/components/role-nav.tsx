@@ -34,7 +34,7 @@ import { useActiveTabIntoView } from "@/components/use-active-tab";
 import { cn } from "@/lib/utils";
 
 /** ხატულები სახელით — სერვერული layout-იდან კომპონენტი (ფუნქცია) კლიენტს ვერ გადაეცემა. */
-const ICONS = {
+export const NAV_ICONS = {
   reports: BarChart3,
   invoices: FileText,
   debts: HandCoins,
@@ -63,7 +63,7 @@ const ICONS = {
   chat: MessagesSquare,
 } satisfies Record<string, LucideIcon>;
 
-export type RoleNavLink = { href: string; label: string; icon: keyof typeof ICONS };
+export type RoleNavLink = { href: string; label: string; icon: keyof typeof NAV_ICONS };
 
 /**
  * როლის გვერდის ჩანართები; პირველი ბმული (როლის მთავარი გვერდი) აქტიურია მხოლოდ ზუსტ მისამართზე
@@ -76,7 +76,7 @@ export function RoleNav({ links, firstExact = true }: { links: RoleNavLink[]; fi
     <nav ref={navRef} className="tab-scroll -mx-4 border-b px-4 sm:mx-0 sm:px-0 print:hidden">
       <ul className="flex gap-1">
         {links.map(({ href, label, icon }, i) => {
-          const Icon = ICONS[icon];
+          const Icon = NAV_ICONS[icon];
           const active = i === 0 && firstExact ? pathname === href : pathname.startsWith(href);
           return (
             <li key={href}>

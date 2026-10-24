@@ -5,6 +5,7 @@ import { type ActionFailure, type ActionResult, failure, success } from "@/lib/a
 import { tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { emitLive } from "@/lib/live";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
 import { ensureCardNumber } from "@/modules/emr/server/card";
@@ -63,6 +64,7 @@ export async function startEncounterAction(appointmentId: number): Promise<Start
       await audit({ userId, action: "start", entity: "encounter", entityId: encounter.id, patientId: a.patientId }, tx);
       return encounter.id;
     }, EMR_TX);
+    emitLive(["appointments"], [userId]);
     return { ok: true, message: "მიღება დაიწყო", encounterId };
   } catch (error) {
     return emrFailure(error);
@@ -83,6 +85,7 @@ export async function markNoShowAction(appointmentId: number): Promise<ActionRes
       await tx.appointment.update({ where: { id: a.id }, data: { status: "no_show", updatedById: userId } });
       await audit({ userId, action: "no_show", entity: "appointment", entityId: a.id, patientId: a.patientId }, tx);
     }, EMR_TX);
+    emitLive(["appointments"], [userId]);
     return success("სტატუსი: არ გამოცხადდა");
   } catch (error) {
     return emrFailure(error);

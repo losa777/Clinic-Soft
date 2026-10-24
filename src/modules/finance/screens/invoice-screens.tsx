@@ -14,6 +14,7 @@ import { param, periodParams, positiveInt, type SearchParams, withParams } from 
 import { type FinanceRoutes, invoiceUrl } from "@/modules/finance/routes";
 import { listInvoices, loadInvoiceDetail, loadInvoiceFormData } from "@/modules/finance/server/invoices";
 import { INVOICE_STATUSES, type InvoiceStatus } from "@/modules/finance/types";
+import { LiveRefresh } from "@/components/live-refresh";
 
 type User = Session["user"];
 
@@ -27,6 +28,7 @@ export async function InvoicesScreen({ routes, params }: { routes: FinanceRoutes
 
   return (
     <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["invoices"]} />
       <div>
         <h1 className="text-xl font-semibold">ინვოისები</h1>
         <p className="text-sm text-muted-foreground">
@@ -94,6 +96,7 @@ export async function InvoiceScreen({ routes, rawId, user }: { routes: FinanceRo
 
   return (
     <section className="flex flex-col gap-2">
+      <LiveRefresh topics={["invoices"]} />
       <Link href={routes.invoices} className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground print:hidden">
         <ArrowLeft className="size-4" />
         ინვოისები
