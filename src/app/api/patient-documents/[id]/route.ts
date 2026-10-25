@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { readDocument } from "@/lib/document-storage";
 import { can } from "@/lib/permissions";
 import { hasRole, PATIENT_ROLES } from "@/lib/roles";
+import { reportingSeesPatient } from "@/modules/reporting/server/access";
 
 /**
  * პაციენტის დოკუმენტის ჩვენება/ჩამოტვირთვა. ფაილები ჯანმრთელობის პერსონალური მონაცემია:
@@ -12,14 +13,15 @@ import { hasRole, PATIENT_ROLES } from "@/lib/roles";
 export async function GET(request: Request, ctx: RouteContext<"/api/patient-documents/[id]">) {
   const session = await auth();
   if (!session?.user) return new Response("ავტორიზაცია საჭიროა", { status: 401 });
-  // რეგისტრატურა/ადმინი, ექიმი (სამედიცინო ჩანაწერი) და ლაბორანტი (კვლევის შედეგი)
+  // რეგისტრატურა/ადმინი, ექიმი (სამედიცინო ჩანაწერი), ლაბორანტი (კვლევის შედეგი); ანგარიშგება — მხოლოდ მისთვის ხილული პაციენტი
   const allowed =
     hasRole(session.user, ...PATIENT_ROLES) || can(session.user, "emr.view") || can(session.user, "orders.lab");
-  if (!allowed) return new Response("წვდომა აკრძალულია", { status: 403 });
+  if (!allowed && !can(session.user, "reporting.view")) return new Response("წვდომა აკრძალულია", { status: 403 });
 
   const id = Number((await ctx.params).id);
   const doc = Number.isInteger(id) ? await prisma.patientDocument.findUnique({ where: { id } }) : null;
   if (!doc) return new Response("დოკუმენტი ვერ მოიძებნა", { status: 404 });
+  if (!allowed && !(await reportingSeesPatient(session.user, doc.patientId))) return new Response("დოკუმენტი ვერ მოიძებნა", { status: 404 });
   await auditOnce({ userId: Number(session.user.id), action: "view", entity: "patient_document", entityId: doc.id, patientId: doc.patientId, details: doc.originalName });
 
   let file: Buffer;

@@ -34,8 +34,15 @@ export async function loadPatientCard(patientId: number) {
     },
   });
   if (!p) return null;
+  // ბოლო საოპერაციო ვიზიტი (ნიშანი ბარათის თავში) — idx_encounters_patient
+  const surgical = await prisma.encounter.findFirst({
+    where: { patientId, isSurgical: true },
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true, portalUploadedAt: true },
+  });
   return {
     id: p.id,
+    surgical: surgical ? { at: day(surgical.startedAt), uploaded: surgical.portalUploadedAt !== null } : null,
     name: `${p.firstName} ${p.lastName}`,
     personalId: p.personalId,
     birthDate: day(p.birthDate),
@@ -88,6 +95,8 @@ export async function loadEncounterHistory(patientId: number, page: number, view
       doctor: fullName(e.doctor)!,
       specialty: e.doctor.doctorProfile?.specialty.name ?? null,
       own: e.doctorId === viewerUserId,
+      surgical: e.isSurgical,
+      portalUploaded: e.portalUploadedAt !== null,
       diagnoses: e.diagnoses.map((d) => ({ code: d.icd10Code, name: d.icd10.nameKa, primary: d.isPrimary, complication: d.isComplication })),
       complaints: e.complaints,
       examination: e.examination,

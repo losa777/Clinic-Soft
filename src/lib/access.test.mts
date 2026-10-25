@@ -122,6 +122,14 @@ describe("როლით წვდომა — უფლებები (ნ�
     }
   });
 
+  it("ანგარიშგება: ნაგულისხმევად მხოლოდ საოპერაციო (ყველა პაციენტი — ადმინის მინიჭებით), სამედიცინო ჩანაწერის შეცვლა — არა", () => {
+    const r = user("reporting");
+    assert.ok(can(r, "reporting.view"));
+    assert.ok(can(r, "reporting.export"));
+    for (const p of ["reporting.all_patients", "emr.view", "emr.edit", "invoices.view"] as const) assert.equal(can(r, p), false, p);
+    for (const role of ["doctor", "registrar", "nurse", "accountant", "director"]) assert.equal(can(user(role), "reporting.export"), false, role);
+  });
+
   it("საწყობის მენეჯერი — მხოლოდ საწყობი", () => {
     const w = user("warehouse");
     for (const p of ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"] as const) assert.ok(can(w, p), p);

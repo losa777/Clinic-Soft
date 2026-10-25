@@ -35,6 +35,8 @@ export async function loadEncounterForm(encounterId: number, viewerUserId: numbe
     version: e.version,
     status: e.status,
     editable: e.doctorId === viewerUserId && e.status === "draft",
+    /** „საოპერაციოა“ — საკუთარ ვიზიტზე ინიშნება დასრულების შემდეგაც (ანგარიშგება) */
+    surgical: { value: e.isSurgical, own: e.doctorId === viewerUserId, uploaded: e.portalUploadedAt !== null },
     doctor: `${e.doctor.firstName} ${e.doctor.lastName}`,
     startedAt: `${formatDate(tbilisiParts(e.startedAt).date)} ${formatTime(e.startedAt)}`,
     savedAt: formatTime(e.updatedAt),

@@ -92,3 +92,27 @@ export async function deleteTemplateAction(id: number): Promise<ActionResult> {
   const { count } = await prisma.doctorTemplate.deleteMany({ where: { id, userId: Number(me.id) } });
   return count ? success("შაბლონი წაიშალა") : failure("შაბლონი ვერ მოიძებნა");
 }
+
+/**
+ * „საოპერაციოა“ (ანგარიშგება — ჯანდაცვის პორტალი): საკუთარ ვიზიტზე, დასრულების შემდეგაც (ჩანაწერის ტექსტს არ ცვლის).
+ * მოხსნისას ატვირთვის სტატუსი რჩება (ისტორიისთვის); ცვლილება აუდიტში იწერება.
+ */
+export async function setSurgicalAction(encounterId: number, isSurgical: boolean): Promise<ActionResult> {
+  const me = await requirePermission("emr.edit");
+  if (!z.number().int().positive().safeParse(encounterId).success) return failure("ვიზიტის ჩანაწერი ვერ მოიძებნა");
+  const userId = Number(me.id);
+  const value = isSurgical === true;
+  const e = await prisma.encounter.findUnique({ where: { id: encounterId }, select: { doctorId: true, patientId: true, isSurgical: true } });
+  if (!e) return failure("ვიზიტის ჩანაწერი ვერ მოიძებნა");
+  if (e.doctorId !== userId) return failure("ეს ვიზიტი სხვა ექიმისაა — მხოლოდ სანახავად");
+  if (e.isSurgical === value) return success(value ? "უკვე მონიშნულია საოპერაციოდ" : "საოპერაციო არ არის");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.encounter.update({
+      where: { id: encounterId },
+      data: value ? { isSurgical: true, surgicalMarkedById: userId, surgicalMarkedAt: new Date() } : { isSurgical: false, surgicalMarkedById: null, surgicalMarkedAt: null },
+    });
+    await audit({ userId, action: value ? "surgical" : "surgical_off", entity: "encounter", entityId: encounterId, patientId: e.patientId }, tx);
+  });
+  return success(value ? "პაციენტი მოინიშნა საოპერაციოდ" : "„საოპერაციო“ მოიხსნა");
+}

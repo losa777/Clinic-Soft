@@ -11,6 +11,7 @@ import {
   CalendarPlus,
   ClipboardCheck,
   ClipboardList,
+  FileSpreadsheet,
   FileText,
   FlaskConical,
   HandCoins,
@@ -20,6 +21,7 @@ import {
   Package,
   PackageMinus,
   PackagePlus,
+  Scissors,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -63,6 +65,8 @@ export const NAV_ICONS = {
   roles: ShieldCheck,
   chat: MessagesSquare,
   issues: TriangleAlert,
+  surgical: Scissors,
+  export: FileSpreadsheet,
 } satisfies Record<string, LucideIcon>;
 
 export type RoleNavLink = { href: string; label: string; icon: keyof typeof NAV_ICONS };

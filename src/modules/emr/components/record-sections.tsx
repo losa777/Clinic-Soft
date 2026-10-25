@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { allergySeverityLabel, ORDER_STATUS_LABELS } from "@/modules/emr/schema";
 import type { loadEncounterHistory, loadFiles, loadStudies, PatientCard } from "@/modules/emr/server/patient-card";
 import { Pager } from "@/modules/finance/components/filters";
+import { SurgicalBadge } from "./surgical-badge";
 
 /** ალერგიები — ბარათის ზედა ნაწილში, ყოველთვის თვალსაჩინოდ (წითლად). */
 export function AllergyBanner({ allergies }: { allergies: NonNullable<PatientCard>["allergies"] }) {
@@ -51,6 +52,7 @@ export function EncounterHistory({ history, pageHref }: { history: History; page
                     {e.specialty && <span className="text-muted-foreground"> · {e.specialty}</span>}
                   </span>
                   {e.own && <Badge variant="secondary">ჩემი</Badge>}
+                  {e.surgical && <SurgicalBadge uploaded={e.portalUploaded} />}
                   <Badge variant={e.status === "completed" ? "outline" : "secondary"} className="ml-auto">
                     {e.status === "completed" ? "დასრულებული" : "მიმდინარე"}
                   </Badge>

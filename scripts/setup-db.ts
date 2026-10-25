@@ -26,6 +26,7 @@ const TEST_USERS: { username: string; firstName: string; lastName: string; role:
   { username: "director", firstName: "ირაკლი", lastName: "წერეთელი", role: "director" },
   { username: "warehouse", firstName: "ნათია", lastName: "ხარაიშვილი", role: "warehouse" },
   { username: "it", firstName: "ლუკა", lastName: "ნოზაძე", role: "it" },
+  { username: "reporting", firstName: "ანა", lastName: "მელაძე", role: "reporting" },
 ];
 
 const TABLE_OPTIONS = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
@@ -1253,6 +1254,43 @@ async function createIssueTables() {
   `);
 }
 
+/**
+ * ანგარიშგება (src/modules/reporting/): ვიზიტის ნიშანი „საოპერაციოა“ და ჯანდაცვის პორტალზე ატვირთვის სტატუსი,
+ * ექსპორტის შაბლონები (არჩეული სვეტები).
+ */
+async function createReportingTables() {
+  await ensureColumn("encounters", "is_surgical", "TINYINT(1) NOT NULL DEFAULT 0 AFTER height_cm");
+  await ensureColumn("encounters", "surgical_marked_by", "INT NULL AFTER is_surgical");
+  await ensureColumn("encounters", "surgical_marked_at", "DATETIME NULL AFTER surgical_marked_by");
+  await ensureColumn("encounters", "portal_uploaded_at", "DATETIME NULL AFTER surgical_marked_at");
+  await ensureColumn("encounters", "portal_uploaded_by", "INT NULL AFTER portal_uploaded_at");
+  await ensureIndex("encounters", "idx_encounters_surgical", "is_surgical, started_at");
+  await ensureIndex("encounters", "idx_encounters_surgical_marked_by", "surgical_marked_by");
+  await ensureIndex("encounters", "idx_encounters_portal_uploaded_by", "portal_uploaded_by");
+  await ensureConstraint("encounters", "fk_encounters_surgical_marked_by", "FOREIGN KEY (surgical_marked_by) REFERENCES users (id) ON DELETE SET NULL");
+  await ensureConstraint("encounters", "fk_encounters_portal_uploaded_by", "FOREIGN KEY (portal_uploaded_by) REFERENCES users (id) ON DELETE SET NULL");
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS report_templates (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      user_id    INT          NOT NULL,
+      name       VARCHAR(100) NOT NULL,
+      columns    TEXT         NOT NULL,
+      created_at DATETIME     NOT NULL,
+      UNIQUE INDEX uq_report_templates_user_name (user_id, name),
+      CONSTRAINT fk_report_templates_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+  // ბოლოს არჩეული სვეტები — ინახება მონიშვნისთანავე, შემდეგ შესვლაზეც რჩება
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS report_preferences (
+      user_id    INT      NOT NULL PRIMARY KEY,
+      columns    TEXT     NOT NULL,
+      updated_at DATETIME NOT NULL,
+      CONSTRAINT fk_report_preferences_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
 /** ნაგულისხმევი კატეგორიები — მხოლოდ ცარიელ ცხრილში (ადმინის ცვლილებები რჩება). */
 async function seedIssueCategories() {
   if (await prisma.issueCategory.count()) return;
@@ -1550,6 +1588,7 @@ async function main() {
   await createSecurityTables();
   await createUserRoleTables();
   await createIssueTables();
+  await createReportingTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();

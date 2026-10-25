@@ -5,7 +5,9 @@ import { z } from "zod";
 import { DEVICE_ID_PATTERN } from "@/components/signature/devices";
 import { type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
 import { formatDate, formatTime, tbilisiParts } from "@/lib/appointment-slots";
-import { requirePermission } from "@/lib/dal";
+import { requirePermission, requireUser } from "@/lib/dal";
+import { can } from "@/lib/permissions";
+import { reportingSeesPatient } from "@/modules/reporting/server/access";
 import { prisma } from "@/lib/db";
 import { detectMimeType, readDocument, removeDocuments, storeDocument } from "@/lib/document-storage";
 import { renderDocumentPdf, signerName } from "@/modules/emr/documents/pdf";
@@ -297,10 +299,13 @@ export async function newVersionAction(documentId: number): Promise<ActionResult
 
 /** მთლიანობის შემოწმება: შენახული PDF-ის sha256 ემთხვევა თუ არა ხელმოწერისას დაფიქსირებულს. */
 export async function verifyDocumentAction(documentId: number): Promise<ActionResult> {
-  const me = await requirePermission("emr.view");
+  // ექიმი (emr.view) ან ანგარიშგება — მხოლოდ მისთვის ხილული პაციენტის დოკუმენტი
+  const me = await requireUser();
+  if (!can(me, "emr.view") && !can(me, "reporting.view")) return failure("წვდომა აკრძალულია");
   if (!idSchema.safeParse(documentId).success) return failure("დოკუმენტი ვერ მოიძებნა");
   const d = await prisma.medicalDocument.findUnique({ where: { id: documentId }, include: { pdf: { select: { storagePath: true } } } });
-  if (!d?.pdf || !d.sha256) return failure("დოკუმენტი ხელმოწერილი არ არის");
+  if (!d || (!can(me, "emr.view") && !(await reportingSeesPatient(me, d.patientId)))) return failure("დოკუმენტი ვერ მოიძებნა");
+  if (!d.pdf || !d.sha256) return failure("დოკუმენტი ხელმოწერილი არ არის");
   let actual: string;
   try {
     actual = createHash("sha256").update(await readDocument(d.pdf.storagePath)).digest("hex");

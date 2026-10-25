@@ -34,6 +34,9 @@ export const PERMISSIONS = {
   "inventory.reports": "საწყობი: ღირებულება და ანგარიშები (CSV)",
   "issues.view_all": "პრობლემები: ყველა ბილეთის ნახვა (კონფიდენციალურის გარდა)",
   "issues.manage": "პრობლემები: კატეგორიები, ნებისმიერი ბილეთის მართვა და გადაცემა",
+  "reporting.view": "ანგარიშგება: საოპერაციო პაციენტების ჩანაწერი, ისტორია და ფორმა 100 (მხოლოდ სანახავად)",
+  "reporting.all_patients": "ანგარიშგება: ყველა პაციენტი (არა მხოლოდ საოპერაციო)",
+  "reporting.export": "ანგარიშგება: Excel ექსპორტი და „ატვირთულად“ მონიშვნა",
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -68,6 +71,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Partial<Record<SystemRoleCode, Permission
   accountant: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports"],
   director: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports", "issues.view_all"],
   warehouse: ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"],
+  // ჯანდაცვის პორტალზე ატვირთვა: ნაგულისხმევად მხოლოდ საოპერაციო პაციენტები (ყველა — reporting.all_patients, ადმინის მინიჭებით)
+  reporting: ["reporting.view", "reporting.export"],
 };
 
 export function isPermission(code: string): code is PermissionCode {

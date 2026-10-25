@@ -10,6 +10,7 @@ import { can } from "@/lib/permissions";
 import { MedicalProfile } from "@/modules/emr/components/medical-profile";
 import { AllergyBanner, EncounterHistory, FilesList, StudiesList } from "@/modules/emr/components/record-sections";
 import { NoShowButton, StartVisitButton } from "@/modules/emr/components/visit-buttons";
+import { SurgicalBadge } from "@/modules/emr/components/surgical-badge";
 import { auditOnce } from "@/lib/audit";
 import { loadEncounterForm, loadTemplates } from "@/modules/emr/server/encounter";
 import { loadEncounterHistory, loadFiles, loadPatientCard, loadStudies } from "@/modules/emr/server/patient-card";
@@ -92,7 +93,10 @@ export async function PatientRecord({
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">{card.name}</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold">
+            {card.name}
+            {card.surgical && <SurgicalBadge label={`საოპერაციო · ${card.surgical.at}`} uploaded={card.surgical.uploaded} />}
+          </h2>
           <p className="text-sm text-muted-foreground">
             {card.age} წ. · {card.gender} · დაბ. {card.birthDate} · <span className="font-mono">{card.personalId}</span>
             {card.phone && ` · ${card.phone}`}

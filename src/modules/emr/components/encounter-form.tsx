@@ -27,12 +27,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   createTemplateAction,
   deleteTemplateAction,
   saveEncounterDraftAction,
+  setSurgicalAction,
 } from "@/modules/emr/actions/visit-form-actions";
 import {
   TEXT_FIELDS,
@@ -57,6 +60,7 @@ import type { CompletionPreview } from "@/modules/emr/server/completion";
 import { CompleteVisit } from "./complete-visit";
 import { Icd10Picker } from "./icd10-picker";
 import { measurementErrors, MeasurementsPanel } from "./measurements-panel";
+import { SurgicalBadge } from "./surgical-badge";
 
 /** აკრეფის შეწყვეტიდან ამდენ ხანში ინახება (ავტოშენახვა). */
 const AUTOSAVE_MS = 2500;
@@ -460,6 +464,7 @@ export function EncounterForm({
               ))}
             </ul>
           )}
+          <SurgicalToggle encounterId={data.id} surgical={data.surgical} />
         </CardContent>
       </Card>
 
@@ -801,6 +806,66 @@ function TemplatesDialog({
         )}
       </div>
       <DialogFooter />
+    </div>
+  );
+}
+
+/**
+ * „საოპერაციოა“ — ცალკე ინახება (ავტოშენახვას და ვერსიას არ ეხება), საკუთარ ვიზიტზე დასრულების შემდეგაც.
+ * სხვა ექიმის ვიზიტზე — მხოლოდ ნიშანი.
+ */
+function SurgicalToggle({
+  encounterId,
+  surgical,
+}: {
+  encounterId: number;
+  surgical: EncounterFormData["surgical"];
+}) {
+  const [value, setValue] = useState(surgical.value);
+  const [pending, startTransition] = useTransition();
+
+  if (!surgical.own) {
+    return value ? <SurgicalBadge uploaded={surgical.uploaded} /> : null;
+  }
+
+  function change(next: boolean) {
+    setValue(next);
+    startTransition(async () => {
+      try {
+        const res = await setSurgicalAction(encounterId, next);
+        if (res.ok) toast.success(res.message);
+        else {
+          setValue(!next);
+          toast.error(res.error ?? "შენახვა ვერ მოხერხდა");
+        }
+      } catch {
+        setValue(!next);
+        toast.error("შენახვა ვერ მოხერხდა. სცადეთ თავიდან");
+      }
+    });
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5",
+        value && "border-violet-300 bg-violet-50/60 dark:border-violet-900 dark:bg-violet-950/30",
+      )}
+    >
+      <div>
+        <Label htmlFor={`surgical-${encounterId}`}>საოპერაციოა</Label>
+        <p className="text-xs text-muted-foreground">
+          {value && surgical.uploaded
+            ? "ჯანდაცვის პორტალზე უკვე ატვირთულია"
+            : "მოინიშნება ანგარიშგებისთვის (ჯანდაცვის პორტალი)"}
+        </p>
+      </div>
+      <Switch
+        id={`surgical-${encounterId}`}
+        checked={value}
+        onCheckedChange={change}
+        disabled={pending}
+      />
     </div>
   );
 }

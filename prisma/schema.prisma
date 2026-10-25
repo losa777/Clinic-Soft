@@ -127,6 +127,11 @@ model User {
   inventoryReceipts  InventoryReceipt[]
   inventoryMovements InventoryMovement[]
 
+  encountersSurgicalMarked Encounter[] @relation("EncounterSurgicalMarkedBy")
+  encountersPortalUploaded Encounter[] @relation("EncounterPortalUploadedBy")
+  reportTemplates          ReportTemplate[]
+  reportPreference         ReportPreference?
+
   issuesCreated    Issue[]           @relation("IssueCreatedBy")
   issuesAssigned   Issue[]           @relation("IssueAssignee")
   issueComments    IssueComment[]
@@ -741,6 +746,13 @@ model Encounter {
   respRate         Int?                 @map("resp_rate") @db.SmallInt
   weightKg         Decimal?             @map("weight_kg") @db.Decimal(5, 1)
   heightCm         Decimal?             @map("height_cm") @db.Decimal(5, 1)
+  /// საოპერაციოა — ექიმი ნიშნავს (დასრულების შემდეგაც); ანგარიშგება (src/modules/reporting/) ჯანდაცვის პორტალზე ტვირთავს
+  isSurgical       Boolean              @default(false) @map("is_surgical")
+  surgicalMarkedById Int?               @map("surgical_marked_by")
+  surgicalMarkedAt DateTime?            @map("surgical_marked_at") @db.DateTime(0)
+  /// ჯანდაცვის პორტალზე ატვირთულია (ანგარიშგების სპეციალისტი ნიშნავს); null — ასატვირთი
+  portalUploadedAt DateTime?            @map("portal_uploaded_at") @db.DateTime(0)
+  portalUploadedById Int?               @map("portal_uploaded_by")
   version          Int                  @default(1)
   startedAt        DateTime             @map("started_at") @db.DateTime(0)
   updatedAt        DateTime             @map("updated_at") @db.DateTime(0)
@@ -748,6 +760,8 @@ model Encounter {
   appointment      Appointment          @relation(fields: [appointmentId], references: [id])
   patient          Patient              @relation(fields: [patientId], references: [id])
   doctor           User                 @relation("EncounterDoctor", fields: [doctorId], references: [id])
+  surgicalMarkedBy User?                @relation("EncounterSurgicalMarkedBy", fields: [surgicalMarkedById], references: [id], onDelete: SetNull)
+  portalUploadedBy User?                @relation("EncounterPortalUploadedBy", fields: [portalUploadedById], references: [id], onDelete: SetNull)
   specialty        Specialty?           @relation(fields: [specialtyId], references: [id])
   measurements     EncounterMeasurement[]
   diagnoses        EncounterDiagnosis[]
@@ -759,6 +773,9 @@ model Encounter {
   @@index([doctorId, startedAt], map: "idx_encounters_doctor")
   @@index([status])
   @@index([specialtyId])
+  @@index([isSurgical, startedAt], map: "idx_encounters_surgical")
+  @@index([surgicalMarkedById], map: "idx_encounters_surgical_marked_by")
+  @@index([portalUploadedById], map: "idx_encounters_portal_uploaded_by")
   @@map("encounters")
 }
 
@@ -1523,4 +1540,29 @@ model IssueEvent {
   @@index([issueId, id], map: "idx_issue_events_issue")
   @@index([userId], map: "idx_issue_events_user")
   @@map("issue_events")
+}
+
+// ─── ანგარიშგება (src/modules/reporting/) ───
+
+/// ექსპორტის შაბლონი: არჩეული სვეტები (columns — JSON მასივი, src/modules/reporting/columns.ts-ის კოდები). მომხმარებლის პირადი.
+model ReportTemplate {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  name      String   @db.VarChar(100)
+  columns   String   @db.Text
+  createdAt DateTime @map("created_at") @db.DateTime(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name], map: "uq_report_templates_user_name")
+  @@map("report_templates")
+}
+
+/// ანგარიშგების სპეციალისტის ბოლოს არჩეული სვეტები (ექსპორტის გვერდი და მთავარი გვერდის „Excel — მონიშნული“). JSON მასივი.
+model ReportPreference {
+  userId    Int      @id @map("user_id")
+  columns   String   @db.Text
+  updatedAt DateTime @map("updated_at") @db.DateTime(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("report_preferences")
 }

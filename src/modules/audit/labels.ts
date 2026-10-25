@@ -20,6 +20,7 @@ export const ENTITY_LABELS: Record<string, string> = {
   chat_retention: "ჩატის გასუფთავება",
   issue: "პრობლემა (ბილეთი)",
   issue_category: "პრობლემის კატეგორია",
+  report: "ანგარიშგება (Excel)",
 };
 
 export const ACTION_LABELS: Record<string, string> = {
@@ -57,10 +58,17 @@ export const ACTION_LABELS: Record<string, string> = {
   status: "სტატუსის ცვლილება",
   comment: "კომენტარი",
   assign: "გადაცემა",
+  export: "ექსპორტი",
+  surgical: "საოპერაციოდ მონიშვნა",
+  surgical_off: "„საოპერაციოს“ მოხსნა",
+  portal_upload: "პორტალზე ატვირთულად მონიშვნა",
+  portal_upload_undo: "ატვირთვის მონიშვნის მოხსნა",
 };
 
 /** მოქმედების ტონი სიაში: სახიფათო (წაშლა, გაუქმება, წარუმატებელი შესვლა) და ცვლილება — განსხვავებულად. */
 export const ACTION_TONE: Record<string, "danger" | "change" | "view"> = {
+  // პირადი/სამედიცინო მონაცემების ფაილად გატანა — ჟურნალში თვალსაჩინოდ
+  export: "change",
   delete: "danger",
   cancel: "danger",
   refund: "danger",
