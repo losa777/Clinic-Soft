@@ -96,7 +96,8 @@ export type InvoiceDetail = {
   visitType: VisitType;
   doctorName: string | null;
   patient: { id: number; name: string; personalId: string; phone: string | null };
-  appointment: { id: number; label: string } | null;
+  /** rendered — ექიმმა მიღება დაიწყო/დაასრულა (გაუქმებას invoices.cancel_rendered სჭირდება) */
+  appointment: { id: number; label: string; rendered: boolean } | null;
   insurance: { companyName: string; policyNumber: string | null } | null;
   insuranceDisabledReason: string | null;
   items: {

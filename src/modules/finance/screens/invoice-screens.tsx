@@ -107,7 +107,7 @@ export async function InvoiceScreen({ routes, rawId, user }: { routes: FinanceRo
         can={{
           pay: can(user, "payments.create") && routes.receipts !== null,
           refund: can(user, "payments.refund"),
-          cancel: can(user, "invoices.cancel"),
+          cancel: can(user, "invoices.cancel") && (!invoice.appointment?.rendered || can(user, "invoices.cancel_rendered")),
         }}
       />
     </section>

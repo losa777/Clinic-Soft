@@ -24,7 +24,7 @@ import { can } from "@/lib/permissions";
 import { hasRole, PATIENT_EDITOR_ROLE, PATIENT_REGISTRAR_ROLE, PATIENT_ROLES } from "@/lib/roles";
 import { type NewPatientPolicy, newPatientPolicySchema } from "@/modules/finance/schema";
 import { FinanceError } from "@/modules/finance/server/errors";
-import { createPatientPolicy } from "@/modules/finance/server/insurance";
+import { createPatientPolicy, loadActiveCompanies } from "@/modules/finance/server/insurance";
 
 export type FindPatientResult = { ok: true; record: PatientRecord | null } | { ok: false; error: string };
 
@@ -41,6 +41,16 @@ export async function findPatient(personalId: string): Promise<FindPatientResult
   const parsed = personalIdSchema.safeParse(personalId);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   return { ok: true, record: await loadPatientRecord({ personalId: parsed.data }) };
+}
+
+/**
+ * რეგისტრაციის მოდალის მონაცემები (NewPatientScreen-ის მსგავსად): დაზღვევის კომპანიები — მხოლოდ პოლისის დამატების
+ * უფლებით; undefined — დაზღვევის ბლოკი არ ჩანს.
+ */
+export async function newPatientFormData(): Promise<{ insuranceCompanies?: { id: number; name: string }[] }> {
+  const user = await requireAnyRole(PATIENT_REGISTRAR_ROLE);
+  const allowed = can(user, "invoices.create") || can(user, "insurance.manage");
+  return { insuranceCompanies: allowed ? await loadActiveCompanies() : undefined };
 }
 
 type Upload = DocumentMeta & { bytes: Uint8Array; mimeType: AcceptedMimeType; originalName: string };

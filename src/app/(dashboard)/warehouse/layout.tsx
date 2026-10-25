@@ -10,7 +10,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
   await requireRole("warehouse");
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <RoleNav links={inventoryNav(INVENTORY_ROUTES.warehouse)} />
+      <RoleNav links={[...inventoryNav(INVENTORY_ROUTES.warehouse), { href: "/warehouse/issues", label: "პრობლემები", icon: "issues" }]} />
       {children}
     </div>
   );

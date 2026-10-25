@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { Building2, ChevronDown, Contact, FileText, LayoutDashboard, Package, ShieldCheck } from "lucide-react";
+import { Building2, ChevronDown, Contact, FileText, LayoutDashboard, Package, ShieldCheck, TriangleAlert } from "lucide-react";
 import { NAV_ICONS, type RoleNavLink } from "@/components/role-nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useActiveTabIntoView } from "@/components/use-active-tab";
@@ -24,6 +24,7 @@ const GROUPS: Group[] = [
   { href: "/admin/patients", label: "პაციენტები", icon: Contact },
   { href: "/admin/invoices", label: "ფინანსები", icon: FileText, items: FINANCE_LINKS, also: ["/admin/receipts"] },
   { href: "/admin/inventory", label: "საწყობი", icon: Package, items: INVENTORY_LINKS, firstExact: true },
+  { href: "/admin/issues", label: "პრობლემები", icon: TriangleAlert },
   { href: "/admin/services", label: "კლინიკა", icon: Building2, items: CLINIC_LINKS },
   { href: "/admin/users", label: "სისტემა", icon: ShieldCheck, items: SYSTEM_LINKS },
 ];

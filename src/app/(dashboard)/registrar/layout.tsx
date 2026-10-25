@@ -1,4 +1,6 @@
+import { NewPatientDialogProvider } from "@/components/patients/new-patient-dialog";
 import { requireRole } from "@/lib/dal";
+import { PATIENT_ROUTES } from "@/lib/patient-routes";
 import { RegistrarNav } from "./registrar-nav";
 
 export const instant = false;
@@ -7,9 +9,11 @@ export default async function RegistrarLayout({ children }: { children: React.Re
   await requireRole("registrar");
 
   return (
-    <div className="flex flex-1 flex-col gap-6">
-      <RegistrarNav />
-      {children}
-    </div>
+    <NewPatientDialogProvider patientHref={PATIENT_ROUTES.registrar.patients}>
+      <div className="flex flex-1 flex-col gap-6">
+        <RegistrarNav />
+        {children}
+      </div>
+    </NewPatientDialogProvider>
   );
 }

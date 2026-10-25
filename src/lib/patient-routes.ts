@@ -12,6 +12,12 @@ export const PATIENT_ROUTES = {
   admin: { search: "/admin/patients", newPatient: null, patients: "/admin/patients", finance: FINANCE_ROUTES.admin, audit: "/admin/audit" },
 } as const satisfies Record<string, { search: string; newPatient: string | null; patients: string; finance: FinanceRoutes | null; audit: string | null }>;
 
-export type PatientRoutes = (typeof PATIENT_ROUTES)[keyof typeof PATIENT_ROUTES];
+/**
+ * ახალი პაციენტის რეგისტრაცია მოდალში (მენიუ და ძებნის შედეგი — src/components/patients/new-patient-dialog.tsx).
+ * false — ძველებურად, ცალკე გვერდზე (/registrar/new). გვერდი ორივე შემთხვევაში არსებობს.
+ */
+export const REGISTER_IN_DIALOG = true;
+
+export type PatientRoutes =(typeof PATIENT_ROUTES)[keyof typeof PATIENT_ROUTES];
 
 export const patientUrl = (routes: PatientRoutes, id: number) => `${routes.patients}/${id}`;

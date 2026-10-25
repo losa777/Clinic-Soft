@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@/generated/prisma/client";
 import { type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
@@ -76,4 +77,33 @@ export async function saveCategoryAction(input: CategoryInput): Promise<ActionRe
   }
   revalidatePath(PATH);
   return success(id ? "კატეგორია შეიცვალა" : `კატეგორია „${name}“ დაემატა`);
+}
+
+/**
+ * კატეგორიის წაშლა — მხოლოდ ცარიელის: სერვისები (გათიშულიც) და დაზღვევის პირობები ჯერ სხვაგან უნდა გადავიდეს / წაიშალოს.
+ * ინვოისის ხაზები კატეგორიას არ ინახავს, ამიტომ ისტორიას არ ეხება.
+ */
+export async function deleteCategoryAction(id: number): Promise<ActionResult> {
+  await requirePermission("services.manage");
+  if (!Number.isSafeInteger(id) || id <= 0) return failure("კატეგორია ვერ მოიძებნა");
+  const category = await prisma.serviceCategory.findUnique({
+    where: { id },
+    select: { name: true, _count: { select: { services: true, contracts: true } } },
+  });
+  if (!category) return failure("კატეგორია ვერ მოიძებნა");
+  if (category._count.services) {
+    return failure(`„${category.name}“-ში ${category._count.services} სერვისია — ჯერ გადაიტანეთ ისინი სხვა კატეგორიაში`);
+  }
+  if (category._count.contracts) {
+    return failure(`„${category.name}“-ზე მიბმულია დაზღვევის ${category._count.contracts} პირობა — ჯერ წაშალეთ ისინი („დაზღვევა“)`);
+  }
+  try {
+    await prisma.serviceCategory.delete({ where: { id } });
+  } catch (error) {
+    // ამასობაში სერვისი/პირობა დაემატა (FK)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") return failure("კატეგორია გამოიყენება — განაახლეთ გვერდი");
+    throw error;
+  }
+  revalidatePath(PATH);
+  return success(`კატეგორია „${category.name}“ წაიშალა`);
 }

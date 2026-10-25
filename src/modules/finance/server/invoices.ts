@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma } from "@/generated/prisma/client";
+import { type AppointmentStatus, Prisma } from "@/generated/prisma/client";
 import { formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import { prisma } from "@/lib/db";
 import { userWithRole } from "@/lib/user-roles";
@@ -263,16 +263,53 @@ export async function refreshInvoiceStatus(tx: Db, invoiceId: number, patientAmo
   await tx.invoice.update({ where: { id: invoiceId }, data: { status: invoiceStatus(patientAmount, paid) } });
 }
 
-/** ინვოისის გაუქმება: მხოლოდ თუ გადახდილი (წმინდა) 0-ია — სხვაგვარად ჯერ დაბრუნება. */
-export async function cancelInvoice(tx: Db, invoiceId: number, reason: string, userId: number) {
+/** ექიმმა მიღება დაიწყო ან დაასრულა — მომსახურება გაწეულია. */
+const isRendered = (status: AppointmentStatus | undefined) => status === "in_progress" || status === "completed";
+
+/**
+ * ინვოისის გაუქმება: მხოლოდ თუ გადახდილი (წმინდა) 0-ია — სხვაგვარად ჯერ დაბრუნება.
+ * გაწეულ მომსახურებაზე (ექიმმა მიღება დაიწყო/დაასრულა) — მხოლოდ invoices.cancel_rendered უფლებით (cancelRendered).
+ */
+export async function cancelInvoice(
+  tx: Db,
+  invoiceId: number,
+  reason: string,
+  userId: number,
+  options: { cancelRendered?: boolean } = {},
+) {
   const { invoice, paid } = await lockInvoice(tx, invoiceId);
   if (invoice.status === "cancelled") throw new FinanceError("ინვოისი უკვე გაუქმებულია");
   if (paid > 0) throw new FinanceError(`ინვოისზე გადახდილია ${fromTetri(paid)} ₾ — ჯერ დააბრუნეთ თანხა, მერე გააუქმეთ`);
+  if (!options.cancelRendered) {
+    const { appointment } = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { appointment: { select: { status: true } } } });
+    if (isRendered(appointment?.status)) throw new FinanceError("ექიმმა მიღება უკვე დაიწყო — გაუქმება მხოლოდ ადმინისტრატორს შეუძლია");
+  }
   await tx.invoice.update({
     where: { id: invoiceId },
     data: { status: "cancelled", cancelReason: reason, cancelledById: userId, cancelledAt: new Date() },
   });
+  await releaseQueue(tx, invoiceId, userId);
   return invoice.invoiceNumber;
+}
+
+/**
+ * გაუქმებული ინვოისის ჯავშანი ექიმის რიგიდან გამოდის, თუ ექიმს მიღება ჯერ არ დაუწყია („მობრძანდა“) და ჯავშანზე
+ * სხვა მოქმედი ინვოისი აღარ არის: ცოცხალი რიგი (walk_in) უქმდება, ჩვეულებრივი ჯავშანი „დაჯავშნილს“ უბრუნდება.
+ */
+async function releaseQueue(tx: Db, invoiceId: number, userId: number) {
+  const { appointmentId } = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { appointmentId: true } });
+  if (!appointmentId) return;
+  if (await invoiceOfAppointment(tx, appointmentId)) return;
+  const appointment = await tx.appointment.findUnique({ where: { id: appointmentId }, select: { status: true, source: true } });
+  if (appointment?.status !== "arrived") return;
+  // status: arrived — ექიმმა ამასობაში თუ მიღება დაიწყო, ჯავშანს არ ვეხებით
+  await tx.appointment.updateMany({
+    where: { id: appointmentId, status: "arrived" },
+    data:
+      appointment.source === "walk_in"
+        ? { status: "cancelled", cancelReason: "ინვოისი გაუქმდა", cancelledById: userId, cancelledAt: new Date(), updatedById: userId }
+        : { status: "booked", arrivedAt: null, updatedById: userId },
+  });
 }
 
 export async function loadInvoiceDetail(id: number): Promise<InvoiceDetail | null> {
@@ -305,7 +342,9 @@ export async function loadInvoiceDetail(id: number): Promise<InvoiceDetail | nul
     visitType: i.visitType,
     doctorName: i.doctorName,
     patient: { id: i.patient.id, name: fullName(i.patient)!, personalId: i.patient.personalId, phone: i.patient.phone },
-    appointment: i.appointment ? { id: i.appointment.id, label: appointmentLabel(i.appointment) } : null,
+    appointment: i.appointment
+      ? { id: i.appointment.id, label: appointmentLabel(i.appointment), rendered: isRendered(i.appointment.status) }
+      : null,
     insurance: i.insuranceCompany ? { companyName: i.insuranceCompany.name, policyNumber: i.policyNumber } : null,
     insuranceDisabledReason: i.insuranceDisabledReason,
     items: i.items.map((it) => ({

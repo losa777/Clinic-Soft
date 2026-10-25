@@ -27,6 +27,7 @@ import {
   Stethoscope,
   Syringe,
   TrendingUp,
+  TriangleAlert,
   Users,
   Wallet,
 } from "lucide-react";
@@ -61,6 +62,7 @@ export const NAV_ICONS = {
   users: Users,
   roles: ShieldCheck,
   chat: MessagesSquare,
+  issues: TriangleAlert,
 } satisfies Record<string, LucideIcon>;
 
 export type RoleNavLink = { href: string; label: string; icon: keyof typeof NAV_ICONS };

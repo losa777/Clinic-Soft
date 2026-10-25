@@ -11,6 +11,7 @@ export const PERMISSIONS = {
   "invoices.view": "ინვოისების ნახვა",
   "invoices.create": "ინვოისის შექმნა, პაციენტის პოლისის დამატება",
   "invoices.cancel": "ინვოისის გაუქმება",
+  "invoices.cancel_rendered": "ინვოისის გაუქმება, როცა ექიმმა მიღება უკვე დაიწყო ან დაასრულა",
   "payments.create": "გადახდის მიღება, ქვითრის ბეჭდვა",
   "payments.refund": "თანხის დაბრუნება",
   "cash.shift": "სალაროს ცვლის გახსნა და დახურვა",
@@ -31,6 +32,8 @@ export const PERMISSIONS = {
   "inventory.receive": "საწყობი: შემოსავალი მომწოდებლიდან",
   "inventory.manage": "საწყობი: კატალოგი, მომწოდებლები, ჩამოწერა",
   "inventory.reports": "საწყობი: ღირებულება და ანგარიშები (CSV)",
+  "issues.view_all": "პრობლემები: ყველა ბილეთის ნახვა (კონფიდენციალურის გარდა)",
+  "issues.manage": "პრობლემები: კატეგორიები, ნებისმიერი ბილეთის მართვა და გადაცემა",
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -63,7 +66,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Partial<Record<SystemRoleCode, Permission
   lab: ["orders.lab", "inventory.view", "inventory.consume"],
   nurse: ["orders.nurse", "inventory.view", "inventory.consume"],
   accountant: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports"],
-  director: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports"],
+  director: [...VIEW_AND_REPORTS, "reports.finance", "inventory.view", "inventory.reports", "issues.view_all"],
   warehouse: ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"],
 };
 

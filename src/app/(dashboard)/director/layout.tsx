@@ -23,6 +23,7 @@ export default async function DirectorLayout({ children }: { children: React.Rea
           { href: routes.debts, label: "დავალიანებები", icon: "debts" },
           ...inventoryLink(user, INVENTORY_ROUTES.director),
           ...(can(user, "audit.view") ? [{ href: "/director/audit", label: "აუდიტი", icon: "audit" as const }] : []),
+          { href: "/director/issues", label: "პრობლემები", icon: "issues" },
         ]}
       />
       {children}

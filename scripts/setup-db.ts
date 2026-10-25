@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS } from "@/lib/permissions";
 import { SYSTEM_ROLES, type SystemRoleCode } from "@/lib/roles";
 import { DEFAULT_SETTINGS } from "@/modules/finance/settings";
+import { DEFAULT_ISSUE_CATEGORIES } from "@/modules/issues/labels";
 import { migrateLegacyVisit } from "@/modules/finance/server/legacy-migration";
 
 /** ძველი, კატეგორიის გარეშე სერვისების კატეგორია. */
@@ -24,6 +25,7 @@ const TEST_USERS: { username: string; firstName: string; lastName: string; role:
   { username: "accountant", firstName: "თამარ", lastName: "ლომიძე", role: "accountant" },
   { username: "director", firstName: "ირაკლი", lastName: "წერეთელი", role: "director" },
   { username: "warehouse", firstName: "ნათია", lastName: "ხარაიშვილი", role: "warehouse" },
+  { username: "it", firstName: "ლუკა", lastName: "ნოზაძე", role: "it" },
 ];
 
 const TABLE_OPTIONS = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
@@ -1152,6 +1154,118 @@ async function createPermissionTables() {
 }
 
 /**
+ * პრობლემების შეტყობინება (src/modules/issues/). ბილეთი, კომენტარი და ისტორია არ იშლება;
+ * ფაილი დისკზეა (DOCUMENTS_DIR/issues/...), ცხრილში მხოლოდ მეტამონაცემები.
+ */
+async function createIssueTables() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS issue_categories (
+      id               INT AUTO_INCREMENT PRIMARY KEY,
+      name             VARCHAR(100) NOT NULL,
+      assignee_role_id INT          NULL,
+      is_confidential  TINYINT(1)   NOT NULL DEFAULT 0,
+      is_active        TINYINT(1)   NOT NULL DEFAULT 1,
+      sort_order       SMALLINT     NOT NULL DEFAULT 0,
+      created_at       DATETIME     NOT NULL,
+      UNIQUE INDEX uq_issue_categories_name (name),
+      INDEX idx_issue_categories_role (assignee_role_id),
+      CONSTRAINT fk_issue_categories_role FOREIGN KEY (assignee_role_id) REFERENCES roles (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS issues (
+      id                INT AUTO_INCREMENT PRIMARY KEY,
+      issue_number      VARCHAR(20)   NOT NULL,
+      title             VARCHAR(200)  NOT NULL,
+      description       TEXT          NULL,
+      category_id       INT           NOT NULL,
+      priority          ENUM('normal', 'high', 'urgent') NOT NULL DEFAULT 'normal',
+      status            ENUM('new', 'in_progress', 'waiting', 'resolved', 'closed', 'rejected') NOT NULL DEFAULT 'new',
+      location          VARCHAR(100)  NULL,
+      source_path       VARCHAR(255)  NULL,
+      created_by        INT           NOT NULL,
+      created_role_code VARCHAR(30)   NULL,
+      assignee_role_id  INT           NULL,
+      assignee_id       INT           NULL,
+      resolution        VARCHAR(1000) NULL,
+      created_at        DATETIME      NOT NULL,
+      updated_at        DATETIME      NOT NULL,
+      resolved_at       DATETIME      NULL,
+      closed_at         DATETIME      NULL,
+      UNIQUE INDEX uq_issues_number (issue_number),
+      INDEX idx_issues_status (status, priority, created_at),
+      INDEX idx_issues_created_by (created_by, created_at),
+      INDEX idx_issues_assignee_role (assignee_role_id, status),
+      INDEX idx_issues_assignee (assignee_id, status),
+      INDEX idx_issues_category (category_id),
+      CONSTRAINT fk_issues_category FOREIGN KEY (category_id) REFERENCES issue_categories (id),
+      CONSTRAINT fk_issues_created_by FOREIGN KEY (created_by) REFERENCES users (id),
+      CONSTRAINT fk_issues_assignee_role FOREIGN KEY (assignee_role_id) REFERENCES roles (id) ON DELETE SET NULL,
+      CONSTRAINT fk_issues_assignee FOREIGN KEY (assignee_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS issue_comments (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      issue_id   INT      NOT NULL,
+      user_id    INT      NOT NULL,
+      body       TEXT     NOT NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_issue_comments_issue (issue_id, id),
+      INDEX idx_issue_comments_user (user_id),
+      CONSTRAINT fk_issue_comments_issue FOREIGN KEY (issue_id) REFERENCES issues (id),
+      CONSTRAINT fk_issue_comments_user FOREIGN KEY (user_id) REFERENCES users (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS issue_attachments (
+      id           INT AUTO_INCREMENT PRIMARY KEY,
+      issue_id     INT          NOT NULL,
+      comment_id   INT          NULL,
+      file_name    VARCHAR(255) NOT NULL,
+      mime_type    VARCHAR(100) NOT NULL,
+      size         INT          NOT NULL,
+      storage_path VARCHAR(255) NOT NULL,
+      uploaded_by  INT          NOT NULL,
+      created_at   DATETIME     NOT NULL,
+      INDEX idx_issue_attachments_issue (issue_id),
+      INDEX idx_issue_attachments_comment (comment_id),
+      INDEX idx_issue_attachments_uploaded_by (uploaded_by),
+      CONSTRAINT fk_issue_attachments_issue FOREIGN KEY (issue_id) REFERENCES issues (id),
+      CONSTRAINT fk_issue_attachments_comment FOREIGN KEY (comment_id) REFERENCES issue_comments (id),
+      CONSTRAINT fk_issue_attachments_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES users (id)
+    ) ${TABLE_OPTIONS}
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS issue_events (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      issue_id   INT          NOT NULL,
+      user_id    INT          NULL,
+      event      VARCHAR(30)  NOT NULL,
+      from_value VARCHAR(200) NULL,
+      to_value   VARCHAR(200) NULL,
+      created_at DATETIME     NOT NULL,
+      INDEX idx_issue_events_issue (issue_id, id),
+      INDEX idx_issue_events_user (user_id),
+      CONSTRAINT fk_issue_events_issue FOREIGN KEY (issue_id) REFERENCES issues (id),
+      CONSTRAINT fk_issue_events_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
+/** ნაგულისხმევი კატეგორიები — მხოლოდ ცარიელ ცხრილში (ადმინის ცვლილებები რჩება). */
+async function seedIssueCategories() {
+  if (await prisma.issueCategory.count()) return;
+  const roles = new Map((await prisma.role.findMany({ select: { id: true, code: true } })).map((r) => [r.code, r.id]));
+  for (const [i, c] of DEFAULT_ISSUE_CATEGORIES.entries()) {
+    await prisma.issueCategory.create({
+      data: { name: c.name, assigneeRoleId: roles.get(c.role) ?? null, isConfidential: c.confidential ?? false, sortOrder: i, createdAt: new Date() },
+    });
+  }
+  console.log(`✔ პრობლემების კატეგორიები: ${DEFAULT_ISSUE_CATEGORIES.length}`);
+}
+
+/**
  * უფლებები: ახალი უფლება ემატება და ნაგულისხმევ როლებს ენიჭება (DEFAULT_ROLE_PERMISSIONS).
  * უკვე არსებული უფლების მინიჭებას არ ვცვლით — ადმინის პანელიდან შეცვლილი რჩება.
  */
@@ -1435,6 +1549,7 @@ async function main() {
   await createInventoryTables();
   await createSecurityTables();
   await createUserRoleTables();
+  await createIssueTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();
@@ -1449,6 +1564,7 @@ async function main() {
   }
   console.log(`✔ როლები: ${Object.keys(SYSTEM_ROLES).length}`);
   await seedPermissions();
+  await seedIssueCategories();
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);
   for (const u of TEST_USERS) {

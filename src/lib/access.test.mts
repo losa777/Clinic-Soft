@@ -37,6 +37,8 @@ describe("როლით წვდომა — მარშრუტები 
     assert.equal(routeRedirect("/chatx", "doctor"), "/doctor");
     assert.equal(routeRedirect("/account/password", "nurse"), null);
     assert.equal(routeRedirect("/account/password", null), "/login");
+    assert.equal(routeRedirect("/issues/12", "lab"), null);
+    assert.equal(routeRedirect("/issues", null), "/login");
   });
 
   it("შესული მომხმარებელი /login-ზე → საკუთარ გვერდზე; API — თავად ამოწმებს", () => {
@@ -85,6 +87,12 @@ describe("როლით წვდომა — უფლებები (ნ�
     assert.ok(can(r, "invoices.create"));
     assert.ok(can(r, "appointments.manage"));
     for (const p of ["emr.view", "emr.edit", "documents.sign"] as const) assert.equal(can(r, p), false, p);
+  });
+
+  it("გაწეული მომსახურების ინვოისის გაუქმება — რეგისტრატურას არა, ადმინს კი", () => {
+    assert.ok(can(user("registrar"), "invoices.cancel"));
+    assert.equal(can(user("registrar"), "invoices.cancel_rendered"), false);
+    assert.ok(can({ roleCode: "admin", permissions: [] }, "invoices.cancel_rendered"));
   });
 
   it("ლაბორანტი და ექთანი — საკუთარი რიგი და საწყობიდან გახარჯვა", () => {

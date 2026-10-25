@@ -18,6 +18,8 @@ export const ENTITY_LABELS: Record<string, string> = {
   role: "როლი",
   chat: "ჩატი",
   chat_retention: "ჩატის გასუფთავება",
+  issue: "პრობლემა (ბილეთი)",
+  issue_category: "პრობლემის კატეგორია",
 };
 
 export const ACTION_LABELS: Record<string, string> = {
@@ -52,6 +54,9 @@ export const ACTION_LABELS: Record<string, string> = {
   logout: "გასვლა",
   permissions: "უფლებების ცვლილება",
   purge: "გასუფთავება",
+  status: "სტატუსის ცვლილება",
+  comment: "კომენტარი",
+  assign: "გადაცემა",
 };
 
 /** მოქმედების ტონი სიაში: სახიფათო (წაშლა, გაუქმება, წარუმატებელი შესვლა) და ცვლილება — განსხვავებულად. */

@@ -17,6 +17,8 @@ model Role {
   users       User[]
   extraUsers  UserRole[]
   permissions RolePermission[]
+  issueCategories IssueCategory[]
+  issuesAssigned  Issue[]
 
   @@map("roles")
 }
@@ -124,6 +126,12 @@ model User {
 
   inventoryReceipts  InventoryReceipt[]
   inventoryMovements InventoryMovement[]
+
+  issuesCreated    Issue[]           @relation("IssueCreatedBy")
+  issuesAssigned   Issue[]           @relation("IssueAssignee")
+  issueComments    IssueComment[]
+  issueAttachments IssueAttachment[]
+  issueEvents      IssueEvent[]
 
   @@index([roleId])
   @@map("users")
@@ -1390,4 +1398,129 @@ model LoginAttempt {
   @@index([ip, createdAt], map: "idx_login_attempts_ip")
   @@index([createdAt], map: "idx_login_attempts_created")
   @@map("login_attempts")
+}
+
+// ─── პრობლემების შეტყობინება (src/modules/issues/) ───
+
+/// კატეგორია განსაზღვრავს, ვის მიდის ბილეთი (assigneeRole). კონფიდენციალურს ხედავს მხოლოდ ავტორი, მიმღები და ადმინი.
+model IssueCategory {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique(map: "uq_issue_categories_name") @db.VarChar(100)
+  assigneeRoleId Int?     @map("assignee_role_id")
+  isConfidential Boolean  @default(false) @map("is_confidential")
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
+  createdAt      DateTime @map("created_at") @db.DateTime(0)
+  assigneeRole   Role?    @relation(fields: [assigneeRoleId], references: [id], onDelete: SetNull)
+  issues         Issue[]
+
+  @@index([assigneeRoleId], map: "idx_issue_categories_role")
+  @@map("issue_categories")
+}
+
+enum IssuePriority {
+  normal
+  high
+  urgent
+}
+
+/// new → in_progress ⇄ waiting → resolved → closed (ავტორი ადასტურებს); rejected — დუბლიკატი/არ არის პრობლემა.
+enum IssueStatus {
+  new
+  in_progress
+  waiting
+  resolved
+  closed
+  rejected
+}
+
+/// ბილეთი არ იშლება. assigneeRole — კატეგორიიდან (შექმნისას/გადაცემისას), assignee — კონკრეტული შემსრულებელი.
+model Issue {
+  id              Int           @id @default(autoincrement())
+  issueNumber     String        @unique(map: "uq_issues_number") @map("issue_number") @db.VarChar(20)
+  title           String        @db.VarChar(200)
+  description     String?       @db.Text
+  categoryId      Int           @map("category_id")
+  priority        IssuePriority @default(normal)
+  status          IssueStatus   @default(new)
+  location        String?       @db.VarChar(100)
+  /// გვერდი, საიდანაც შეიქმნა (პრობლემის კონტექსტი)
+  sourcePath      String?       @map("source_path") @db.VarChar(255)
+  createdById     Int           @map("created_by")
+  createdRoleCode String?       @map("created_role_code") @db.VarChar(30)
+  assigneeRoleId  Int?          @map("assignee_role_id")
+  assigneeId      Int?          @map("assignee_id")
+  /// რა გაკეთდა (გადაწყდა) ან უარის მიზეზი
+  resolution      String?       @db.VarChar(1000)
+  createdAt       DateTime      @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime      @map("updated_at") @db.DateTime(0)
+  resolvedAt      DateTime?     @map("resolved_at") @db.DateTime(0)
+  closedAt        DateTime?     @map("closed_at") @db.DateTime(0)
+  category        IssueCategory @relation(fields: [categoryId], references: [id])
+  createdBy       User          @relation("IssueCreatedBy", fields: [createdById], references: [id])
+  assigneeRole    Role?         @relation(fields: [assigneeRoleId], references: [id], onDelete: SetNull)
+  assignee        User?         @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  comments        IssueComment[]
+  attachments     IssueAttachment[]
+  events          IssueEvent[]
+
+  @@index([status, priority, createdAt], map: "idx_issues_status")
+  @@index([createdById, createdAt], map: "idx_issues_created_by")
+  @@index([assigneeRoleId, status], map: "idx_issues_assignee_role")
+  @@index([assigneeId, status], map: "idx_issues_assignee")
+  @@index([categoryId], map: "idx_issues_category")
+  @@map("issues")
+}
+
+model IssueComment {
+  id          Int               @id @default(autoincrement())
+  issueId     Int               @map("issue_id")
+  userId      Int               @map("user_id")
+  body        String            @db.Text
+  createdAt   DateTime          @map("created_at") @db.DateTime(0)
+  issue       Issue             @relation(fields: [issueId], references: [id])
+  user        User              @relation(fields: [userId], references: [id])
+  attachments IssueAttachment[]
+
+  @@index([issueId, id], map: "idx_issue_comments_issue")
+  @@index([userId], map: "idx_issue_comments_user")
+  @@map("issue_comments")
+}
+
+/// ფაილი დისკზეა (DOCUMENTS_DIR/issues/...), აქ მხოლოდ მეტამონაცემები. commentId null — ბილეთის შექმნისას დართული.
+model IssueAttachment {
+  id           Int           @id @default(autoincrement())
+  issueId      Int           @map("issue_id")
+  commentId    Int?          @map("comment_id")
+  fileName     String        @map("file_name") @db.VarChar(255)
+  mimeType     String        @map("mime_type") @db.VarChar(100)
+  size         Int
+  storagePath  String        @map("storage_path") @db.VarChar(255)
+  uploadedById Int           @map("uploaded_by")
+  createdAt    DateTime      @map("created_at") @db.DateTime(0)
+  issue        Issue         @relation(fields: [issueId], references: [id])
+  comment      IssueComment? @relation(fields: [commentId], references: [id])
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id])
+
+  @@index([issueId], map: "idx_issue_attachments_issue")
+  @@index([commentId], map: "idx_issue_attachments_comment")
+  @@index([uploadedById], map: "idx_issue_attachments_uploaded_by")
+  @@map("issue_attachments")
+}
+
+/// ისტორია: event = created | status | assigned | category | priority; fromValue/toValue — კოდი ან სახელი. მხოლოდ ემატება.
+model IssueEvent {
+  id        Int      @id @default(autoincrement())
+  issueId   Int      @map("issue_id")
+  userId    Int?     @map("user_id")
+  event     String   @db.VarChar(30)
+  fromValue String?  @map("from_value") @db.VarChar(200)
+  toValue   String?  @map("to_value") @db.VarChar(200)
+  createdAt DateTime @map("created_at") @db.DateTime(0)
+  issue     Issue    @relation(fields: [issueId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([issueId, id], map: "idx_issue_events_issue")
+  @@index([userId], map: "idx_issue_events_user")
+  @@map("issue_events")
 }

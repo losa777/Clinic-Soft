@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import { emitLive } from "@/lib/live";
+import { can } from "@/lib/permissions";
 import { type CancelInvoiceInput, cancelInvoiceSchema, type InvoiceInput, invoiceSchema } from "@/modules/finance/schema";
 import { FINANCE_TX, financeFailure } from "@/modules/finance/server/errors";
 import { cancelInvoice, createInvoice } from "@/modules/finance/server/invoices";
@@ -27,26 +28,35 @@ export async function createInvoiceAction(input: InvoiceInput): Promise<InvoiceC
   }
 }
 
-/** ინვოისის გაუქმება მიზეზით (invoices.cancel). ჩანაწერი რჩება; გადახდილი ინვოისი ჯერ დაბრუნებას საჭიროებს. */
+/**
+ * ინვოისის გაუქმება მიზეზით (invoices.cancel). ჩანაწერი რჩება; გადახდილი ინვოისი ჯერ დაბრუნებას საჭიროებს.
+ * გაწეულ მომსახურებაზე (ექიმმა მიღება დაიწყო/დაასრულა) — დამატებით invoices.cancel_rendered.
+ */
 export async function cancelInvoiceAction(input: CancelInvoiceInput): Promise<ActionResult> {
   const me = await requirePermission("invoices.cancel");
   const parsed = cancelInvoiceSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
 
   try {
-    const number = await prisma.$transaction(
+    const { number, doctorId } = await prisma.$transaction(
       async (tx) => {
-        const number = await cancelInvoice(tx, parsed.data.invoiceId, parsed.data.reason, Number(me.id));
-        const inv = await tx.invoice.findUniqueOrThrow({ where: { id: parsed.data.invoiceId }, select: { patientId: true, totalAmount: true } });
+        const number = await cancelInvoice(tx, parsed.data.invoiceId, parsed.data.reason, Number(me.id), {
+          cancelRendered: can(me, "invoices.cancel_rendered"),
+        });
+        const inv = await tx.invoice.findUniqueOrThrow({
+          where: { id: parsed.data.invoiceId },
+          select: { patientId: true, totalAmount: true, doctorId: true },
+        });
         await audit(
           { userId: Number(me.id), action: "cancel", entity: "invoice", entityId: parsed.data.invoiceId, patientId: inv.patientId, details: `${number} · ${inv.totalAmount.toFixed(2)} ₾ · ${parsed.data.reason}` },
           tx,
         );
-        return number;
+        return { number, doctorId: inv.doctorId };
       },
       FINANCE_TX,
     );
-    emitLive(["invoices", "appointments"]);
+    // ინვოისის ჯავშანი ექიმის მომლოდინეთა რიგიდან გამოდის
+    emitLive(["invoices", "appointments"], [doctorId]);
     return success(`ინვოისი ${number} გაუქმდა`);
   } catch (error) {
     return financeFailure(error);

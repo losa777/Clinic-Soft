@@ -53,6 +53,8 @@ type Props = {
   patientHref?: string;
   /** რეგისტრაციისას პოლისის დამატება (აქტიური კომპანიები); არ არის — დაზღვევის ბლოკი არ ჩანს (უფლება არ აქვს) */
   insuranceCompanies?: { id: number; name: string }[];
+  /** ახალი პაციენტი შეინახა (მოდალი იხურება) — პაციენტის გვერდზე გადასვლამდე */
+  onSaved?: () => void;
 };
 
 function initialValuesOf({ initialRecord, initialValues }: Props): PatientFormValues {
@@ -66,7 +68,7 @@ function initialValuesOf({ initialRecord, initialValues }: Props): PatientFormVa
  * დოკუმენტების სკანირება და ატვირთვა.
  */
 export function PatientForm(props: Props) {
-  const { canEdit, initialRecord, patientHref, insuranceCompanies } = props;
+  const { canEdit, initialRecord, patientHref, insuranceCompanies, onSaved } = props;
   const router = useRouter();
   const [values, setValues] = useState<PatientFormValues>(() => initialValuesOf(props));
   const [lookup, setLookup] = useState<Lookup>(() =>
@@ -247,6 +249,7 @@ export function PatientForm(props: Props) {
       if (patientHref && !record) {
         // Next.js ნანახ გვერდს მეხსიერებაში ინახავს — „ახალ პაციენტზე“ დაბრუნებისას ფორმა სუფთა უნდა იყოს
         clear();
+        onSaved?.();
         startNavigationProgress();
         router.push(`${patientHref}/${res.record.id}`);
         return;

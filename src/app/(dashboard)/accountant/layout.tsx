@@ -22,6 +22,7 @@ export default async function AccountantLayout({ children }: { children: React.R
           { href: routes.invoices, label: "ინვოისები", icon: "invoices" },
           { href: routes.debts, label: "დავალიანებები", icon: "debts" },
           ...inventoryLink(user, INVENTORY_ROUTES.accountant),
+          { href: "/accountant/issues", label: "პრობლემები", icon: "issues" },
         ]}
       />
       {children}

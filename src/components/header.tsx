@@ -10,6 +10,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { logout } from "@/lib/auth-actions";
 import { rolePath } from "@/lib/roles";
 import { ChatHeaderButton } from "@/modules/chat/components/chat-button";
+import { ReportIssueButton } from "@/modules/issues/components/report-issue-button";
 
 export function Header({ user }: { user: Session["user"] }) {
   return (
@@ -32,6 +33,7 @@ export function Header({ user }: { user: Session["user"] }) {
               <RoleSwitcher roles={user.roles} active={{ code: user.roleCode, name: user.roleName }} />
             </div>
           </div>
+          <ReportIssueButton />
           <ChatHeaderButton />
           <NotificationBell />
           <ThemeToggle />

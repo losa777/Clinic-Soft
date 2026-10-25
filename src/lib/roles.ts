@@ -12,6 +12,7 @@ export const SYSTEM_ROLES = {
   accountant: "ბუღალტერი",
   director: "დირექტორი",
   warehouse: "საწყობის მენეჯერი",
+  it: "IT სპეციალისტი",
 } as const;
 
 export type SystemRoleCode = keyof typeof SYSTEM_ROLES;
@@ -34,7 +35,7 @@ export const PATIENT_EDITOR_ROLE: SystemRoleCode = "admin";
 export const ROLE_CODE_PATTERN = /^[a-z][a-z0-9-]{1,29}$/;
 
 /** კოდები, რომლებიც სისტემის მარშრუტებს ემთხვევა ან მომავლისთვისაა დაჯავშნილი. */
-export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public", "chat", "account"];
+export const RESERVED_ROLE_CODES = ["login", "logout", "api", "profile", "settings", "static", "public", "chat", "account", "issues"];
 
 /** სესიის როლი: მომხმარებელს შეიძლება რამდენიმე ჰქონდეს (მთავარი + დამატებითი, users.role_id + user_roles). */
 export type RoleRef = { code: string; name: string };

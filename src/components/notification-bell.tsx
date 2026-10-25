@@ -9,6 +9,7 @@ import {
   FlaskConical,
   PackageX,
   Syringe,
+  TriangleAlert,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +37,8 @@ const ICONS: Record<string, typeof Bell> = {
   procedure_done: Syringe,
   inventory_low: PackageX,
   inventory_expiry: CalendarClock,
+  issue_new: TriangleAlert,
+  issue_update: TriangleAlert,
 };
 
 /**

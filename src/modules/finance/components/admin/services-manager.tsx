@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { type ColumnFiltersState, type SortingState, useTable } from "@tanstack/react-table";
-import { FolderTree, Pencil, Plus, Power, Search } from "lucide-react";
+import { FolderTree, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
@@ -16,7 +16,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { formatGel } from "@/lib/money";
 import { type AppColumnDef, tableFeatureSet } from "@/lib/table";
 import { cn } from "@/lib/utils";
-import { saveCategoryAction, saveServiceAction, setServiceActiveAction } from "@/modules/finance/actions/service-actions";
+import { deleteCategoryAction, saveCategoryAction, saveServiceAction, setServiceActiveAction } from "@/modules/finance/actions/service-actions";
 import { ORDER_TYPES } from "@/modules/finance/schema";
 import { NativeSelectClient } from "../native-select";
 
@@ -227,7 +227,7 @@ export function ServicesManager({ data, categories, canManage }: { data: Service
       </Dialog>
 
       <Dialog open={categoriesOpen} onOpenChange={setCategoriesOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <CategoriesEditor categories={categories} />
         </DialogContent>
       </Dialog>
@@ -326,7 +326,17 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
   const [name, setName] = useState("");
   const [orderType, setOrderType] = useState("");
   const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const { setResult, pending, startTransition, errors, formError } = useResult();
+
+  function remove(id: number) {
+    startTransition(async () => {
+      const res = await deleteCategoryAction(id);
+      setResult(res);
+      setDeleting(null);
+      if (res.ok) toast.success(res.message);
+    });
+  }
 
   function save(input: { id?: number; name: string; orderType: OrderTypeValue | null }, onSuccess: () => void) {
     startTransition(async () => {
@@ -354,35 +364,62 @@ function CategoriesEditor({ categories }: { categories: CategoryRow[] }) {
       )}
       <ul className="divide-y rounded-lg border text-sm">
         {categories.map((c) => (
-          <li key={c.id} className="flex items-center gap-2 px-3 py-1.5">
-            {renaming?.id === c.id ? (
-              <form
-                className="flex flex-1 gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  save({ ...renaming, orderType: c.orderType }, () => setRenaming(null));
-                }}
-              >
-                <Input value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} className="h-8" autoFocus />
-                <Button type="submit" size="sm" disabled={pending}>
-                  შენახვა
+          <li key={c.id} className="flex flex-col gap-1 px-3 py-1.5">
+            <div className="flex items-center gap-2">
+              {renaming?.id === c.id ? (
+                <form
+                  className="flex flex-1 gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    save({ ...renaming, orderType: c.orderType }, () => setRenaming(null));
+                  }}
+                >
+                  <Input value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} className="h-8" autoFocus />
+                  <Button type="submit" size="sm" disabled={pending}>
+                    შენახვა
+                  </Button>
+                </form>
+              ) : (
+                <>
+                  <span className="min-w-0 flex-1 truncate" title={c.name}>
+                    {c.name}
+                  </span>
+                  <NativeSelectClient
+                    id={`category-order-${c.id}`}
+                    value={c.orderType ?? ""}
+                    onChange={(v) => save({ id: c.id, name: c.name, orderType: (v || null) as OrderTypeValue | null }, () => undefined)}
+                    options={ORDER_TYPE_OPTIONS}
+                    className="h-8 w-44 shrink-0 text-xs"
+                  />
+                  <span className="w-16 shrink-0 text-xs whitespace-nowrap text-muted-foreground">{c.services} სერვისი</span>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setRenaming({ id: c.id, name: c.name })} aria-label="გადარქმევა">
+                    <Pencil />
+                  </Button>
+                  {/* სერვისიანი კატეგორია არ იშლება — ჯერ სერვისები სხვაგან (დაზღვევის პირობებს სერვერი ამოწმებს) */}
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setDeleting(c.id)}
+                    disabled={c.services > 0 || pending}
+                    aria-label={`წაშლა: ${c.name}`}
+                    title={c.services > 0 ? "კატეგორიაში სერვისებია — ჯერ გადაიტანეთ ისინი სხვა კატეგორიაში" : "წაშლა"}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 />
+                  </Button>
+                </>
+              )}
+            </div>
+            {deleting === c.id && (
+              <span className="flex items-center justify-end gap-2 pb-1 text-xs">
+                წაიშალოს „{c.name}“?
+                <Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => remove(c.id)}>
+                  წაშლა
                 </Button>
-              </form>
-            ) : (
-              <>
-                <span className="flex-1">{c.name}</span>
-                <NativeSelectClient
-                  id={`category-order-${c.id}`}
-                  value={c.orderType ?? ""}
-                  onChange={(v) => save({ id: c.id, name: c.name, orderType: (v || null) as OrderTypeValue | null }, () => undefined)}
-                  options={ORDER_TYPE_OPTIONS}
-                  className="h-8 w-44 text-xs"
-                />
-                <span className="text-xs text-muted-foreground">{c.services} სერვისი</span>
-                <Button variant="ghost" size="icon-sm" onClick={() => setRenaming({ id: c.id, name: c.name })} aria-label="გადარქმევა">
-                  <Pencil />
+                <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => setDeleting(null)}>
+                  არა
                 </Button>
-              </>
+              </span>
             )}
           </li>
         ))}

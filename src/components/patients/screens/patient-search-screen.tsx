@@ -6,23 +6,23 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireUser } from "@/lib/dal";
 import { type PatientSearchRow, SEARCH_LIMIT, searchPatients } from "@/lib/patient-records";
-import { type PatientRoutes, patientUrl } from "@/lib/patient-routes";
+import { type PatientRoutes, patientUrl, REGISTER_IN_DIALOG } from "@/lib/patient-routes";
+import { NewPatientButton } from "@/components/patients/new-patient-dialog";
 import { can } from "@/lib/permissions";
 import { DebtBadge } from "@/modules/finance/components/invoice-status-badge";
 import { newInvoiceUrl } from "@/modules/finance/routes";
 
 /** ძებნის ტექსტიდან რეგისტრაციის ფორმის წინასწარი მნიშვნელობები. */
-function registerHref(newPatient: string, query: string, kind: "personalId" | "name") {
-  const params = new URLSearchParams();
-  if (kind === "personalId") {
-    if (query.length === 11) params.set("personalId", query);
-  } else if (!/[a-z]/i.test(query)) {
-    // ქართული სახელი/გვარი გადადის ფორმაში (ლათინური ძებნა — არა, ის ქართულ ველებში არ ჯდება)
-    const [firstName, ...rest] = query.split(" ");
-    params.set("firstName", firstName);
-    if (rest.length) params.set("lastName", rest.join(" "));
-  }
-  const qs = params.toString();
+function registerPrefill(query: string, kind: "personalId" | "name"): Record<string, string> {
+  if (kind === "personalId") return query.length === 11 ? { personalId: query } : {};
+  // ქართული სახელი/გვარი გადადის ფორმაში (ლათინური ძებნა — არა, ის ქართულ ველებში არ ჯდება)
+  if (/[a-z]/i.test(query)) return {};
+  const [firstName, ...rest] = query.split(" ");
+  return rest.length ? { firstName, lastName: rest.join(" ") } : { firstName };
+}
+
+function registerHref(newPatient: string, prefill: Record<string, string>) {
+  const qs = new URLSearchParams(prefill).toString();
   return qs ? `${newPatient}?${qs}` : newPatient;
 }
 
@@ -61,12 +61,15 @@ export async function PatientSearchScreen({ routes, rawQuery }: { routes: Patien
               „{query}“ — ასეთი პაციენტი ბაზაში არ არის.
               {newPatient && " შეგიძლიათ დაარეგისტრიროთ როგორც ახალი პაციენტი."}
             </span>
-            {newPatient && (
-              <Link href={registerHref(newPatient, query, result.kind)} className={buttonVariants({ size: "lg" })}>
-                <UserPlus />
-                ახალი პაციენტის რეგისტრაცია
-              </Link>
-            )}
+            {newPatient &&
+              (REGISTER_IN_DIALOG ? (
+                <NewPatientButton prefill={registerPrefill(query, result.kind)} />
+              ) : (
+                <Link href={registerHref(newPatient, registerPrefill(query, result.kind))} className={buttonVariants({ size: "lg" })}>
+                  <UserPlus />
+                  ახალი პაციენტის რეგისტრაცია
+                </Link>
+              ))}
           </AlertDescription>
         </Alert>
       )}
@@ -93,9 +96,13 @@ export async function PatientSearchScreen({ routes, rawQuery }: { routes: Patien
             <p className="text-sm text-muted-foreground">
               სასურველი პაციენტი სიაში არ არის?{" "}
               {/* ნაპოვნი პაციენტები ამ სახელით/ნომრით უკვე არსებობენ — ახალი პაციენტის ფორმა ცარიელი იხსნება */}
-              <Link href={newPatient} className="font-medium text-primary hover:underline">
-                ახალი პაციენტის რეგისტრაცია
-              </Link>
+              {REGISTER_IN_DIALOG ? (
+                <NewPatientButton variant="link">ახალი პაციენტის რეგისტრაცია</NewPatientButton>
+              ) : (
+                <Link href={newPatient} className="font-medium text-primary hover:underline">
+                  ახალი პაციენტის რეგისტრაცია
+                </Link>
+              )}
             </p>
           )}
         </div>
