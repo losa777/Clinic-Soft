@@ -196,7 +196,7 @@ export async function DoctorPatientSearchScreen({ params }: { params: SearchPara
         <h1 className="text-xl font-semibold">პაციენტის ძიება</h1>
         <p className="text-sm text-muted-foreground">სახელი და გვარი, პირადი ნომერი ან ტელეფონი</p>
       </div>
-      <PatientSearchInput action={DOCTOR_PATIENTS} initialQuery={query} />
+      <PatientSearchInput action={DOCTOR_PATIENTS} initialQuery={query} patientHref={DOCTOR_PATIENTS} />
       {result.status === "invalid" && (
         <Alert variant="destructive">
           <AlertDescription>{result.error}</AlertDescription>

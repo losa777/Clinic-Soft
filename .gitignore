@@ -33,6 +33,9 @@ yarn-error.log*
 # სკანერის აგენტის ინსტალატორი (npm run scanner:build)
 /scanner-agent/dist/
 
+# ბაზის ექსპორტი (npm run db:export) — პაციენტების მონაცემები, git-ში არ შედის
+/backups/
+
 # პაციენტების ფაილები (storage/documents) — პერსონალური მონაცემები, git-ში არ შედის
 /storage/
 

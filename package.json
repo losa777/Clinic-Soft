@@ -17,7 +17,8 @@
     "test:integration": "tsx --env-file=.env.local --conditions=react-server --test tests/integration/*.test.ts",
     "scanner:build": "node scanner-agent/build.mjs",
     "dev:next": "next dev",
-    "https:setup": "node scripts/https-setup.mjs"
+    "https:setup": "node scripts/https-setup.mjs",
+    "db:export": "tsx --env-file=.env.local scripts/db-export.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

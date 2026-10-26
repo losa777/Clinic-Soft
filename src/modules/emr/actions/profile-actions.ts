@@ -16,7 +16,7 @@ import {
   profileItemSchema,
 } from "@/modules/emr/schema";
 import { audit } from "@/lib/audit";
-import { searchIcd10 } from "@/modules/emr/server/icd10";
+import { searchIcd10, suggestIcd10 } from "@/modules/emr/server/icd10";
 
 /**
  * სამედიცინო პროფილი (ალერგიები, ქრონიკული დაავადებები, მუდმივი მედიკამენტები, სისხლის ჯგუფი) — emr.edit.
@@ -120,7 +120,9 @@ export async function setBloodGroupAction(input: BloodGroupInput): Promise<Actio
 }
 
 /** ICD-10 ძებნა კოდით ან დასახელებით (მაქს. 20) — დიაგნოზისა და ქრონიკული დაავადებისთვის. */
+/** ICD-10 ძებნა; ცარიელი ტექსტი (ველზე დაჭერისას) — ექიმის/კლინიკის ხშირად გამოყენებული დიაგნოზები. */
 export async function searchIcd10Action(query: string) {
-  await requirePermission("emr.view");
-  return typeof query === "string" ? searchIcd10(query) : [];
+  const me = await requirePermission("emr.view");
+  if (typeof query !== "string") return [];
+  return query.trim() ? searchIcd10(query) : suggestIcd10(Number(me.id));
 }

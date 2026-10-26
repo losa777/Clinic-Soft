@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Search, SearchX, UserPlus, UserRound, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { searchAppointmentPatients } from "@/lib/appointment-actions";
 import type { BookingPatient } from "@/lib/appointment-schema";
-import type { PatientSearchResult } from "@/lib/patient-records";
+import type { PatientSearchResult, PatientSearchRow } from "@/lib/patient-records";
+import { useRecentPatients } from "@/components/patients/recent-patients";
 import { DebtBadge } from "@/modules/finance/components/invoice-status-badge";
 import { prefillFromQuery, QuickPatientForm } from "./quick-patient-form";
 
@@ -37,8 +38,11 @@ export function PatientPicker({
   // პასუხი ინახება ძებნის ტექსტთან ერთად; ახალი ძებნისას წინა შედეგი ჩანს, სანამ ახალი მოვა
   const [found, setFound] = useState<{ q: string; result: PatientSearchResult } | null>(null);
   const [registering, setRegistering] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const q = query.trim().replace(/\s+/g, " ");
+  // ცარიელ ველზე დაჭერისას — ბოლო 50 პაციენტი (გვერდის გახსნისას ავტომატური ფოკუსი სიას არ ხსნის)
+  const recent = useRecentPatients({ inputRef, autoFocus: true, suppressed: query.trim() !== "", onPick: onChange });
   const ready = isReady(q);
 
   useEffect(() => {
@@ -99,8 +103,13 @@ export function PatientPicker({
         <Input
           type="search"
           value={query}
+          ref={inputRef}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+          {...recent.handlers}
+          onKeyDown={(e) => {
+            if (recent.onKeyDown(e)) return;
+            if (e.key === "Enter") e.preventDefault();
+          }}
           placeholder="პირადი ნომერი, გვარი და სახელი ან ტელეფონი"
           aria-label="პაციენტის ძებნა"
           autoComplete="off"
@@ -110,6 +119,7 @@ export function PatientPicker({
         {loading && (
           <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" aria-label="ძებნა..." />
         )}
+        {recent.dropdown}
       </div>
 
       {result.status === "invalid" && (
@@ -138,21 +148,7 @@ export function PatientPicker({
           </p>
           <ul className="divide-y overflow-hidden rounded-xl border">
             {result.rows.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => onChange(p)}
-                  className="grid w-full grid-cols-2 gap-x-4 gap-y-0.5 px-4 py-2.5 text-left text-sm outline-none hover:bg-muted/60 focus-visible:bg-muted sm:grid-cols-4"
-                >
-                  <span className="flex flex-wrap items-center gap-2 font-medium">
-                    {p.lastName} {p.firstName}
-                    <DebtBadge debt={p.debt} />
-                  </span>
-                  <span className="font-mono tracking-wider text-muted-foreground">{p.personalId}</span>
-                  <span className="text-muted-foreground tabular-nums">{p.birthDate}</span>
-                  <span className="text-muted-foreground tabular-nums">{p.phone ?? "—"}</span>
-                </button>
-              </li>
+              <PatientRow key={p.id} patient={p} onSelect={onChange} />
             ))}
           </ul>
           <p className="text-sm text-muted-foreground">
@@ -183,5 +179,25 @@ function Field({ label, value, strong, mono }: { label: string; value: string; s
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className={`truncate ${strong ? "font-semibold" : ""} ${mono ? "font-mono tracking-wider" : ""}`}>{value}</dd>
     </div>
+  );
+}
+
+function PatientRow({ patient: p, onSelect }: { patient: PatientSearchRow; onSelect: (patient: BookingPatient) => void }) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(p)}
+        className="grid w-full grid-cols-2 gap-x-4 gap-y-0.5 px-4 py-2.5 text-left text-sm outline-none hover:bg-muted/60 focus-visible:bg-muted sm:grid-cols-4"
+      >
+        <span className="flex flex-wrap items-center gap-2 font-medium">
+          {p.lastName} {p.firstName}
+          <DebtBadge debt={p.debt} />
+        </span>
+        <span className="font-mono tracking-wider text-muted-foreground">{p.personalId}</span>
+        <span className="text-muted-foreground tabular-nums">{p.birthDate}</span>
+        <span className="text-muted-foreground tabular-nums">{p.phone ?? "—"}</span>
+      </button>
+    </li>
   );
 }

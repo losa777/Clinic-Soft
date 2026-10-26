@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search, X } from "lucide-react";
+import { startNavigationProgress } from "@/components/navigation-progress";
+import { useRecentPatients } from "@/components/patients/recent-patients";
 import { Input } from "@/components/ui/input";
 
 const DEBOUNCE_MS = 350;
@@ -16,9 +18,20 @@ function readiness(q: string): "empty" | "short" | "ready" {
 
 /**
  * საძიებო ველი: აკრეფისას ავტომატურად ეძებს (მისამართის ?q= განახლებით — შედეგებს სერვერი აბრუნებს),
- * Enter-ზე მაშინვე, ✕ ღილაკით სუფთავდება.
+ * Enter-ზე მაშინვე, ✕ ღილაკით სუფთავდება. ცარიელ ველზე დაჭერისას — ბოლო 50 პაციენტი (patientHref/<id>).
  */
-export function PatientSearchInput({ action, initialQuery }: { action: string; initialQuery: string }) {
+export function PatientSearchInput({
+  action,
+  initialQuery,
+  patientHref,
+  invoiceHref,
+}: {
+  action: string;
+  initialQuery: string;
+  patientHref: string;
+  /** ახალი ინვოისის მისამართი პაციენტის id-ის გარეშე (…/new?patientId=); null — ინვოისის უფლება არ აქვს */
+  invoiceHref?: string | null;
+}) {
   const router = useRouter();
   const [value, setValue] = useState(initialQuery);
   const [pending, startTransition] = useTransition();
@@ -27,6 +40,19 @@ export function PatientSearchInput({ action, initialQuery }: { action: string; i
   const lastSent = useRef(initialQuery);
 
   useEffect(() => () => clearTimeout(timer.current), []);
+  const recent = useRecentPatients({
+    inputRef: input,
+    autoFocus: true,
+    suppressed: value.trim() !== "",
+    onPick: (p) => {
+      startNavigationProgress();
+      router.push(`${patientHref}/${p.id}`);
+    },
+    links: {
+      invoice: invoiceHref ? (id) => `${invoiceHref}${id}` : null,
+      view: (id) => `${patientHref}/${id}`,
+    },
+  });
 
   function navigate(raw: string) {
     clearTimeout(timer.current);
@@ -71,7 +97,11 @@ export function PatientSearchInput({ action, initialQuery }: { action: string; i
           type="search"
           value={value}
           onChange={(e) => change(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && value && clear()}
+          {...recent.handlers}
+          onKeyDown={(e) => {
+            if (recent.onKeyDown(e)) return;
+            if (e.key === "Escape" && value) clear();
+          }}
           placeholder="მაგ. ნინო ბერიძე ან 01001012345"
           aria-label="სახელი, გვარი ან პირადი ნომერი"
           autoComplete="off"
@@ -92,6 +122,7 @@ export function PatientSearchInput({ action, initialQuery }: { action: string; i
             </button>
           )}
         </div>
+        {recent.dropdown}
       </div>
       {state === "short" && (
         <p className="text-xs text-muted-foreground">

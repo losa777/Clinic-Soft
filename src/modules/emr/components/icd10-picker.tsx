@@ -35,8 +35,20 @@ export function Icd10Picker({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // ველზე დაჭერისას (ჯერ არაფერი აკრეფილა) — ექიმის/კლინიკის ხშირად გამოყენებული დიაგნოზები
+  const [suggestions, setSuggestions] = useState<Icd10Option[] | null>(null);
   const q = query.trim();
-  const position = useDropdownPosition(inputRef, open && q.length >= 2);
+  const searching = q.length >= 2;
+  const showList = open && (searching || (suggestions?.length ?? 0) > 0);
+  const position = useDropdownPosition(inputRef, showList);
+
+  function loadSuggestions() {
+    if (suggestions !== null) return;
+    setSuggestions([]);
+    searchIcd10Action("")
+      .then(setSuggestions)
+      .catch(() => setSuggestions(null));
+  }
 
   useEffect(() => {
     if (q.length < 2) return;
@@ -52,8 +64,8 @@ export function Icd10Picker({
     };
   }, [q]);
 
-  const rows = q.length >= 2 && found ? found.rows : [];
-  const loading = q.length >= 2 && found?.q !== q;
+  const rows = searching ? (found?.rows ?? []) : (suggestions ?? []);
+  const loading = searching && found?.q !== q;
 
   function select(option: Icd10Option) {
     onSelect(option);
@@ -78,7 +90,10 @@ export function Icd10Picker({
           setOpen(true);
           setActive(0);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          loadSuggestions();
+        }}
         onBlur={() => setOpen(false)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -102,8 +117,7 @@ export function Icd10Picker({
         <Loader2 className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
       )}
       {/* body-ში (portal), რომ ბარათის/ფორმის კონტეინერი სიას არ ჭრიდეს */}
-      {open &&
-        q.length >= 2 &&
+      {showList &&
         !loading &&
         position &&
         createPortal(
@@ -112,6 +126,11 @@ export function Icd10Picker({
             style={position}
             className="fixed z-50 overflow-y-auto rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10"
           >
+            {!searching && (
+              <li className="px-2 pt-1 pb-1.5 text-xs text-muted-foreground" role="presentation">
+                ხშირად გამოყენებული — ან აკრიფეთ კოდი / დასახელება
+              </li>
+            )}
             {rows.length === 0 && (
               <li className="px-2 py-2 text-muted-foreground">
                 ვერაფერი მოიძებნა

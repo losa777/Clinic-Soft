@@ -44,7 +44,12 @@ export async function PatientSearchScreen({ routes, rawQuery }: { routes: Patien
         <p className="text-sm text-muted-foreground">მოძებნეთ სახელით და გვარით ან პირადი ნომრით</p>
       </div>
 
-      <PatientSearchInput action={routes.search} initialQuery={query} />
+      <PatientSearchInput
+        action={routes.search}
+        initialQuery={query}
+        patientHref={routes.patients}
+        invoiceHref={routes.finance && canInvoice ? `${routes.finance.invoices}/new?patientId=` : null}
+      />
 
       {result.status === "invalid" && (
         <Alert variant="destructive">
@@ -131,7 +136,7 @@ function PatientCard({ routes, patient: p, invoiceHref }: { routes: PatientRoute
             </Link>
           )}
           <Link href={patientUrl(routes, p.id)} className={buttonVariants({ variant: "outline", size: "lg" })}>
-            პაციენტის სრული ინფორმაცია
+            სრული ინფორმაცია
             <ArrowRight />
           </Link>
         </div>

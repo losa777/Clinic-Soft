@@ -89,7 +89,9 @@ export type PatientSearchRow = {
 export type PatientSearchResult =
   | { status: "empty" }
   | { status: "invalid"; error: string }
-  | { status: "ok"; kind: "personalId" | "name"; rows: PatientSearchRow[]; hasMore: boolean };
+  | { status: "ok"; kind: "personalId" | "name"; rows: PatientSearchRow[]; hasMore: boolean }
+  /** ცარიელ ძებნაზე — ბოლო პაციენტები (recentPatients) */
+  | { status: "recent"; rows: PatientSearchRow[] };
 
 export const SEARCH_LIMIT = 20;
 
@@ -129,6 +131,35 @@ function numberCondition(q: string): PatientSearchResult | Prisma.PatientWhereIn
  * uq_patients_personal_id, idx_patients_phone_digits, idx_patients_name (last_name, first_name), idx_patients_first_name
  * და ლათინური ანალოგები.
  */
+/**
+ * ბოლო პაციენტები (ძებნის ველზე დაჭერისას / ცარიელ ძებნაზე): ექიმისთვის — ბოლოს ნანახი საკუთარი პაციენტები
+ * (idx_encounters_doctor), სხვებისთვის — ბოლოს დარეგისტრირებულები (PRIMARY KEY). მაქს. RECENT_LIMIT.
+ */
+export const RECENT_LIMIT = 50;
+
+export async function recentPatients({ doctorUserId }: { doctorUserId?: number } = {}): Promise<PatientSearchResult> {
+  const select = { id: true, personalId: true, firstName: true, lastName: true, phone: true, birthDate: true } as const;
+  let found: Prisma.PatientGetPayload<{ select: typeof select }>[];
+  if (doctorUserId) {
+    const encounters = await prisma.encounter.findMany({
+      where: { doctorId: doctorUserId },
+      select: { patientId: true },
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+      take: RECENT_LIMIT * 4,
+    });
+    const ids = [...new Set(encounters.map((e) => e.patientId))].slice(0, RECENT_LIMIT);
+    const byId = new Map((await prisma.patient.findMany({ where: { id: { in: ids } }, select })).map((p) => [p.id, p]));
+    found = ids.map((id) => byId.get(id)).filter((p) => p !== undefined);
+  } else {
+    found = await prisma.patient.findMany({ select, orderBy: { id: "desc" }, take: RECENT_LIMIT });
+  }
+  const debts = await patientDebts(prisma, found.map((p) => p.id));
+  return {
+    status: "recent",
+    rows: found.map((p) => ({ ...p, birthDate: dateFormat.format(p.birthDate), debt: fromTetri(debts.get(p.id) ?? 0) })),
+  };
+}
+
 /** page — გვერდი (1-დან), SEARCH_LIMIT ჩანაწერი გვერდზე (დიდი სია — მხოლოდ გვერდებად). */
 export async function searchPatients(query: string, { byPhone = false, page = 1 } = {}): Promise<PatientSearchResult> {
   const q = query.trim().replace(/\s+/g, " ");
