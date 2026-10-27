@@ -25,7 +25,29 @@ export type ChatUser = UserRef & { roleName: string; isActive: boolean };
 /** ძებნის შედეგი / Favorites. */
 export type ChatContact = ChatUser & { isFavorite: boolean; presence: Presence };
 
-export type SystemEvent = "created" | "renamed" | "member_added" | "member_removed" | "member_left";
+/** call_* — ზარის ისტორია პირად საუბარში (ავტორი — დამრეკი, target — ვისაც დაურეკეს; call_ended-ის body — წამები). */
+export type SystemEvent =
+  | "created"
+  | "renamed"
+  | "member_added"
+  | "member_removed"
+  | "member_left"
+  | "call_ended"
+  | "call_missed"
+  | "call_declined";
+
+/**
+ * ზარის დასრულების მიზეზი: declined — უარყო, missed — არ უპასუხა (30 წმ), cancelled — დამრეკმა გათიშა პასუხამდე,
+ * ended — საუბარი დასრულდა, busy — სხვა ზარშია, disconnected — კავშირი გაწყდა, elsewhere — სხვა ტაბში უპასუხა/უარყო.
+ */
+export type CallEndReason = "declined" | "missed" | "cancelled" | "ended" | "busy" | "disconnected" | "elsewhere";
+
+/** WebRTC-ის სიგნალი (სერვერი მხოლოდ გადასცემს მეორე მონაწილის ტაბს). */
+export type CallSignal =
+  | { type: "offer" | "answer"; sdp: string }
+  | { type: "candidate"; candidate: { candidate: string; sdpMid: string | null; sdpMLineIndex: number | null } };
+
+export type CallAck = { ok: true } | { ok: false; error: string };
 
 export type ChatAttachment = {
   id: number;
@@ -105,6 +127,12 @@ export interface ServerToClientEvents {
   "session:user": (e: { userId: number }) => void;
   /** სხვა მოდულების მონაცემები შეიცვალა (ჯავშნები, ინვოისები...) — ღია გვერდები ახლდება (src/lib/live.ts) */
   "live:changed": (e: LiveEvent) => void;
+  /** შემომავალი ზარი — მომხმარებლის ყველა ტაბს */
+  "call:incoming": (e: { callId: string; from: UserRef }) => void;
+  /** ზარს უპასუხეს — მხოლოდ დამრეკის ტაბს */
+  "call:accepted": (e: { callId: string }) => void;
+  "call:signal": (e: { callId: string; signal: CallSignal }) => void;
+  "call:ended": (e: { callId: string; reason: CallEndReason }) => void;
 }
 
 /** ბრაუზერი → სერვერი */
@@ -112,4 +140,10 @@ export interface ClientToServerEvents {
   typing: (e: { conversationId: number }) => void;
   /** მომხმარებლის აქტივობა (throttle-ით) */
   activity: () => void;
+  "call:invite": (e: { callId: string; toUserId: number }, ack: (r: CallAck) => void) => void;
+  "call:accept": (e: { callId: string }, ack: (r: CallAck) => void) => void;
+  "call:decline": (e: { callId: string }) => void;
+  /** გათიშვა: პასუხამდე (დამრეკი) ან საუბრის დროს (ნებისმიერი) */
+  "call:hangup": (e: { callId: string }) => void;
+  "call:signal": (e: { callId: string; signal: CallSignal }) => void;
 }

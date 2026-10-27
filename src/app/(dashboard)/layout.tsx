@@ -1,6 +1,7 @@
 import { Header } from "@/components/header";
 import { requireUser } from "@/lib/dal";
 import { ChatProvider } from "@/modules/chat/client/provider";
+import { CallPanel } from "@/modules/chat/components/call-panel";
 import { ChatNotifications } from "@/modules/chat/screens/chat-notifications";
 import { ChatPopup } from "@/modules/chat/screens/chat-popup";
 
@@ -17,6 +18,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6">{children}</main>
       <ChatPopup />
       <ChatNotifications />
+      <CallPanel />
     </ChatProvider>
   );
 }

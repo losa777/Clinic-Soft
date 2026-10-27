@@ -5,6 +5,7 @@ import type { LiveEvent } from "@/lib/live-types";
 import { CHAT_SOCKET_PATH, MESSAGE_PAGE_SIZE, QUOTE_LENGTH, TYPING_SEND_MS, TYPING_SHOW_MS } from "@/modules/chat/config";
 import { fullName, previewText, snippet } from "@/modules/chat/format";
 import { idleMs, trackActivity } from "@/modules/chat/client/activity";
+import { CallController } from "@/modules/chat/client/calls";
 import { ChatApiError, chatApi } from "@/modules/chat/client/api";
 import {
   type ChatState,
@@ -68,6 +69,8 @@ function lastMessageOf(m: ChatMessage) {
  */
 export class ChatClient {
   readonly store: Store<ChatState>;
+  /** ზარები — იმავე სოკეტით */
+  readonly calls = new CallController();
   private socket: ChatSocket | null = null;
   private stopActivity: (() => void) | null = null;
   private typingSweep: ReturnType<typeof setInterval> | null = null;
@@ -112,6 +115,7 @@ export class ChatClient {
     });
     this.socket = socket;
     this.bindSocket(socket);
+    const detachCalls = this.calls.attach(socket);
     this.stopActivity = trackActivity(() => socket.connected && socket.emit("activity"));
     this.typingSweep = setInterval(() => this.sweepTyping(), 1_000);
     const flushReads = () => this.flushReads();
@@ -134,6 +138,7 @@ export class ChatClient {
       this.stopActivity?.();
       if (this.typingSweep) clearInterval(this.typingSweep);
       if (this.retryTimer) clearTimeout(this.retryTimer);
+      detachCalls();
       socket.removeAllListeners();
       socket.disconnect();
       this.socket = null;

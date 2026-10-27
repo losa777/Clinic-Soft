@@ -5,10 +5,10 @@ import { prisma } from "@/lib/db";
 import { GROUP_MAX_MEMBERS } from "@/modules/chat/config";
 import { fullName, previewText } from "@/modules/chat/format";
 import { lockConversation, requireActiveUsers, requireGroupOwner, requireMember } from "@/modules/chat/server/access";
+import { createDirect, createSystemMessage, directKey } from "@/modules/chat/server/core";
 import { bool, type Db, inTx, int } from "@/modules/chat/server/db";
 import { toChatUser } from "@/modules/chat/server/dto";
 import { ChatError, conversationNotFound } from "@/modules/chat/server/errors";
-import { createSystemMessage } from "@/modules/chat/server/messages";
 import { loadPresence } from "@/modules/chat/server/presence";
 import type { ChatMessage, ConversationDetail, ConversationSummary, MemberRole, Presence } from "@/modules/chat/types";
 
@@ -184,8 +184,6 @@ export async function memberIds(db: Db, conversationId: number): Promise<number[
   return rows.map((r) => r.userId);
 }
 
-const directKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
-
 /**
  * პირადი საუბარი: არსებული ან ახალი. direct_key UNIQUE — ორ ადამიანს შორის ერთი საუბარი.
  */
@@ -196,23 +194,7 @@ export async function openDirect(tx: Db, userId: number, otherUserId: number) {
   if (existing) return { conversationId: existing.id, created: false };
 
   await requireActiveUsers(tx, [otherUserId]);
-  const now = new Date();
-  const conversation = await tx.conversation.create({
-    data: {
-      type: "direct",
-      directKey: key,
-      createdById: userId,
-      createdAt: now,
-      members: {
-        create: [
-          { userId, role: "member", joinedAt: now },
-          { userId: otherUserId, role: "member", joinedAt: now },
-        ],
-      },
-    },
-    select: { id: true },
-  });
-  return { conversationId: conversation.id, created: true };
+  return { conversationId: await createDirect(tx, userId, otherUserId), created: true };
 }
 
 /** openDirect საკუთარ ტრანზაქციაში; ერთდროული შექმნისას (UNIQUE direct_key) — არსებული საუბარი. */

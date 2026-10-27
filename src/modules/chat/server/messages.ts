@@ -4,10 +4,11 @@ import { prisma } from "@/lib/db";
 import { MESSAGE_CATCH_UP_MAX, MESSAGE_PAGE_SIZE, MESSAGE_SEARCH_LIMIT } from "@/modules/chat/config";
 import { requireMember } from "@/modules/chat/server/access";
 import type { StoredAttachment } from "@/modules/chat/server/attachments";
+import { touchConversation } from "@/modules/chat/server/core";
 import { type Db, inTx, likeEscape } from "@/modules/chat/server/db";
 import { MESSAGE_SELECT, toMessage } from "@/modules/chat/server/dto";
 import { ChatError, messageNotFound } from "@/modules/chat/server/errors";
-import type { ChatMessage, MessagePage, SystemEvent } from "@/modules/chat/types";
+import type { ChatMessage, MessagePage } from "@/modules/chat/types";
 
 /**
  * შეტყობინებები. ყველა მოთხოვნა იყენებს ინდექსს (conversation_id, id); cursor — შეტყობინების id.
@@ -71,40 +72,6 @@ export async function searchMessages(db: Db, userId: number, conversationId: num
     select: MESSAGE_SELECT,
   });
   return { messages: rows.slice(0, MESSAGE_SEARCH_LIMIT).map(toMessage), hasMore: rows.length > MESSAGE_SEARCH_LIMIT };
-}
-
-/**
- * ახალი შეტყობინების შემდეგ: საუბრის ბოლო შეტყობინება და ავტორის „წაკითხულია“ (საკუთარი არ ითვლება წაუკითხავად).
- * GREATEST — ერთდროული გაგზავნისას უფრო ძველი id ახალს არ გადაეწერება. last_message_at ჯერ ითვლება (ძველი id-ით).
- */
-async function touchConversation(tx: Db, conversationId: number, messageId: bigint, userId: number, at: Date) {
-  await tx.$executeRaw`
-    UPDATE conversations
-    SET last_message_at = IF(${messageId} > COALESCE(last_message_id, 0), ${at}, last_message_at),
-        last_message_id = GREATEST(COALESCE(last_message_id, 0), ${messageId})
-    WHERE id = ${conversationId}
-  `;
-  await tx.$executeRaw`
-    UPDATE conversation_members SET last_read_message_id = GREATEST(last_read_message_id, ${messageId})
-    WHERE conversation_id = ${conversationId} AND user_id = ${userId}
-  `;
-}
-
-/** ჯგუფის მოვლენა (შეიქმნა, სახელი, მონაწილე დაემატა/ამოიშალა/გავიდა) — ჩანს ისტორიაში და სიის ნაწყვეტში. */
-export async function createSystemMessage(
-  tx: Db,
-  conversationId: number,
-  actorId: number,
-  event: SystemEvent,
-  extra: { targetUserId?: number; body?: string } = {},
-): Promise<ChatMessage> {
-  const createdAt = new Date();
-  const row = await tx.message.create({
-    data: { conversationId, senderId: actorId, kind: "system", event, targetUserId: extra.targetUserId ?? null, body: extra.body ?? null, createdAt },
-    select: MESSAGE_SELECT,
-  });
-  await touchConversation(tx, conversationId, row.id, actorId, createdAt);
-  return toMessage(row);
 }
 
 export type SendInput = { body: string; replyToId?: number; clientId?: string; attachments?: StoredAttachment[] };

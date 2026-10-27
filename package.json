@@ -18,6 +18,7 @@
     "scanner:build": "node scanner-agent/build.mjs",
     "dev:next": "next dev",
     "https:setup": "node scripts/https-setup.mjs",
+    "https:build": "node https-installer/build.mjs",
     "db:export": "tsx --env-file=.env.local scripts/db-export.ts"
   },
   "dependencies": {

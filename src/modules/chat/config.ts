@@ -37,6 +37,8 @@ export const RATE_LIMITS = {
   mutate: { capacity: 30, windowMs: 10_000 },
   search: { capacity: 30, windowMs: 10_000 },
   typing: { capacity: 10, windowMs: 10_000 },
+  // ზარის დაწყება (სოკეტით)
+  call: { capacity: 5, windowMs: 60_000 },
 } as const;
 
 export type RateLimitKind = keyof typeof RATE_LIMITS;

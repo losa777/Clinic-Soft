@@ -54,3 +54,4 @@ next-env.d.ts
 
 # HTTPS: კლინიკის CA და სერვერის სერტიფიკატი (npm run https:setup) — გასაღებები საიდუმლოა
 /certs/
+/https-installer/dist/

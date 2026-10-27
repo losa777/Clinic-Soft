@@ -5,12 +5,14 @@
  *   npm start      → tsx server.ts        (npm run build-ის შემდეგ)
  * პორტი/მისამართი: PORT (3000), HOST (ყველა ინტერფეისი). Socket.IO-ს მისამართი — CHAT_SOCKET_PATH.
  * HTTPS: .env.local-ში HTTPS_KEY_FILE და HTTPS_CERT_FILE (npm run https:setup) — მაშინ PORT https-ზე მუშაობს;
- * HTTP_REDIRECT_PORT (მაგ. 80) — http:// მოთხოვნები https-ზე გადამისამართდება.
+ * იმავე პორტზე http:// (მისამართი სქემის გარეშე აკრეფილი) → https:// გადამისამართება;
+ * HTTP_REDIRECT_PORT (მაგ. 80) — სხვა პორტის http:// მოთხოვნებიც https-ზე გადამისამართდება.
  * ეს ფაილი Next-ის bundle-ში არ შედის — tsx უშვებს პირდაპირ. ჩატის realtime კოდის შეცვლისას გადატვირთეთ.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
+import net from "node:net";
 import path from "node:path";
 import tls from "node:tls";
 import { loadEnvConfig } from "@next/env";
@@ -73,17 +75,35 @@ async function main() {
   });
 
   const scheme = tls ? "https" : "http";
-  server.listen(port, hostname, () => {
-    console.log(`> მზადაა: ${scheme}://${hostname ?? "localhost"}:${port} (${dev ? "development" : "production"})`);
+  const ready = () => console.log(`> მზადაა: ${scheme}://${hostname ?? "localhost"}:${port} (${dev ? "development" : "production"})`);
+  if (!tls) {
+    server.listen(port, hostname, ready);
+    return;
+  }
+
+  const redirect = createHttpServer((req, res) => {
+    const host = (req.headers.host ?? "localhost").replace(/:\d+$/, "");
+    res.writeHead(301, { Location: `https://${host}${port === 443 ? "" : `:${port}`}${req.url ?? "/"}` });
+    res.end();
   });
+  // ერთ პორტზე ორივე: TLS-ის პირველი ბაიტი 0x16 (ClientHello) → https, სხვა (http-ის „GET ...“) → გადამისამართება
+  net
+    .createServer((socket) => {
+      socket.setTimeout(30_000, () => socket.destroy());
+      socket.on("error", () => socket.destroy());
+      socket.once("data", (chunk) => {
+        socket.setTimeout(0);
+        socket.pause();
+        socket.unshift(chunk);
+        (chunk[0] === 0x16 ? server : redirect).emit("connection", socket);
+        process.nextTick(() => socket.resume());
+      });
+    })
+    .listen(port, hostname, ready);
 
   const redirectPort = Number(process.env.HTTP_REDIRECT_PORT || 0);
-  if (tls && redirectPort) {
-    createHttpServer((req, res) => {
-      const host = (req.headers.host ?? "localhost").replace(/:\d+$/, "");
-      res.writeHead(301, { Location: `https://${host}${port === 443 ? "" : `:${port}`}${req.url ?? "/"}` });
-      res.end();
-    }).listen(redirectPort, hostname, () => console.log(`> http://…:${redirectPort} → https (გადამისამართება)`));
+  if (redirectPort && redirectPort !== port) {
+    redirect.listen(redirectPort, hostname, () => console.log(`> http://…:${redirectPort} → https (გადამისამართება)`));
   }
 }
 

@@ -46,6 +46,40 @@ export function playSound() {
   }
 }
 
+function tone(freq: number, start: number, length: number, volume = 0.1) {
+  if (!audio) return;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.02);
+  gain.gain.setValueAtTime(volume, start + length - 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(start);
+  osc.stop(start + length);
+}
+
+/**
+ * ზარის ხმა, გაჩერებამდე: incoming — შემომავალი (ორმაგი სიგნალი ყოველ 2 წმ-ში), outgoing — „გადის“ (425 Hz, 1 წმ / 3 წმ).
+ * AudioContext ჯერ არ არის (გვერდზე ჯერ არაფერს დააჭირეს) — ჩუმად. აბრუნებს გაჩერების ფუნქციას.
+ */
+export function startRingtone(kind: "incoming" | "outgoing"): () => void {
+  const play = () => {
+    if (!audio || audio.state !== "running") return;
+    const t = audio.currentTime;
+    if (kind === "outgoing") return tone(425, t, 1, 0.06);
+    for (const offset of [0, 0.5]) {
+      tone(880, t + offset, 0.18);
+      tone(660, t + offset + 0.2, 0.18);
+    }
+  };
+  play();
+  const timer = setInterval(play, kind === "incoming" ? 2_000 : 3_000);
+  return () => clearInterval(timer);
+}
+
 export function notificationPermission(): NotificationPermission | "unsupported" {
   return typeof Notification === "undefined" ? "unsupported" : Notification.permission;
 }

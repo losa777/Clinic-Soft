@@ -309,7 +309,9 @@ npm run test:integration  # რეალურ ბაზაზე (.env.local): 
 
 **Deploy:** ერთი Node პროცესი (`npm start`). reverse proxy-ის (IIS / nginx) უკან ჩართეთ WebSocket upgrade `/api/chat/socket`-ზე (თუ არა — Socket.IO long-polling-ზე გადადის, უფრო ნელა). რამდენიმე instance-ზე საჭირო იქნება Socket.IO Redis adapter (სტატუსები და rate limit ახლა ერთი პროცესის მეხსიერებაშია). `output: "standalone"` custom server-თან არ მუშაობს.
 
-**სტრუქტურა:** `config.ts`, `types.ts`, `schema.ts`, `format.ts`, `linkify.ts`, `time.ts`, `files.ts`, `presence.ts` (სუფთა, ტესტებით); `server/` (წვდომა — `access.ts`, საუბრები, შეტყობინებები, ფაილები, ძებნა, პარამეტრები); `realtime/` (Socket.IO, ავტორიზაცია, სტატუსები); `client/` (store, `ChatClient`, provider, აქტივობა, ხმა/notification); `components/`; `screens/` (გვერდი, popup, შეტყობინებები).
+**ზარები (1:1, ხმა):** 📞 ღილაკი პირადი საუბრის სათაურში და თანამშრომლების სიაში (გასულზე — გამორთულია). სიგნალი — ჩატის სოკეტით (`realtime/calls.ts`, მდგომარეობა მეხსიერებაში), ხმა — WebRTC, პირდაპირ კომპიუტერებს შორის (კლინიკის ქსელში STUN/TURN არ სჭირდება). შემომავალი ზარი რეკავს ყველა ტაბში 30 წამი; „არ შემაწუხოთ“-ზე და სხვა ზარში მყოფს ზარი არ გადის. ისტორია — სისტემური შეტყობინება პირად საუბარში: `call_ended` (ხანგრძლივობა), `call_missed`, `call_declined` (`realtime/call-log.ts`). **მიკროფონი მხოლოდ https-ზე მუშაობს** (ან `localhost`) — იხ. „HTTPS კლინიკის ქსელში“.
+
+**სტრუქტურა:** `config.ts`, `types.ts`, `schema.ts`, `format.ts`, `linkify.ts`, `time.ts`, `files.ts`, `presence.ts` (სუფთა, ტესტებით); `server/` (წვდომა — `access.ts`, საუბრები, შეტყობინებები, ფაილები, ძებნა, პარამეტრები; `core.ts` — სისტემური შეტყობინება/პირადი საუბარი, სოკეტ-სერვერისთვისაც); `realtime/` (Socket.IO, ავტორიზაცია, სტატუსები, ზარები); `client/` (store, `ChatClient`, `CallController`, provider, აქტივობა, ხმა/notification); `components/`; `screens/` (გვერდი, popup, შეტყობინებები).
 
 ## პროფილის ფოტო (`src/lib/avatars.ts`)
 
@@ -430,7 +432,14 @@ npm run test:integration  # რეალურ ბაზაზე (.env.local): 
 
 ### HTTPS კლინიკის ქსელში
 
-სერვერზე (ერთხელ): `npm run https:setup` — იქმნება კლინიკის საკუთარი „სანდო ცენტრი“ (CA) და სერვერის სერტიფიკატი ამ კომპიუტერის სახელზე და ყველა IP-ზე (დამატებით: `npm run https:setup -- --name clinic-pc --ip 10.1.20.245`). საჭიროა OpenSSL (Git for Windows-ს მოყვება). ფაილები — `certs/` (git-ში არ შედის).
+**ინსტალატორით (ბრძანებების გარეშე):** `npm run https:build` → `https-installer/dist/ClinicHttpsServerSetup.exe`.
+
+1. სერვერზე გაუშვით `ClinicHttpsServerSetup.exe` (ადმინისტრატორის უფლებას თავად ითხოვს; OpenSSL არ სჭირდება): პროექტის საქაღალდე (ავტომატურად), დამატებითი სახელი/IP, პორტი, http→https (80), Firewall → „დაყენება“. ქმნის სერტიფიკატებს `certs/`-ში, ავსებს `.env.local`-ს და ამზადებს `certs/ClinicCertificateSetup.exe`-ს. შემდეგ — სერვერის გადატვირთვა (`npm run start`).
+2. ყველა კომპიუტერზე (ერთხელ): `ClinicCertificateSetup.exe` — კლინიკის სანდო ცენტრი Windows-ში (+ Firefox), ბმული «კლინიკა» სამუშაო მაგიდაზე, სკანერის აგენტის https მისამართები.
+
+კლინიკის CA-ს გასაღები სერვერის Windows-ის საცავშია (LocalMachine\My, გაუტანელი) — ხელახლა გაშვებისას (ახალი IP, ვადის განახლება) CA იგივე რჩება და კომპიუტერებზე არაფერი იცვლება. ძველი ფაილები ინახება `certs/backup-*`-ში.
+
+**ხელით (OpenSSL):** სერვერზე (ერთხელ): `npm run https:setup` — იქმნება კლინიკის საკუთარი „სანდო ცენტრი“ (CA) და სერვერის სერტიფიკატი ამ კომპიუტერის სახელზე და ყველა IP-ზე (დამატებით: `npm run https:setup -- --name clinic-pc --ip 10.1.20.245`). საჭიროა OpenSSL (Git for Windows-ს მოყვება). ფაილები — `certs/` (git-ში არ შედის).
 
 1. `.env.local`: `HTTPS_KEY_FILE=certs/server.key`, `HTTPS_CERT_FILE=certs/server.crt`, `AUTH_TRUST_HOST=true`; სურვილისამებრ `HTTP_REDIRECT_PORT=80` (http:// → https://). გადატვირთეთ სერვერი — `https://<სერვერი>:3000`.
 2. კლინიკის ყველა კომპიუტერზე (ერთხელ): `certs/clinic-ca.crt` და `certs/install-clinic-ca.cmd` ერთ საქაღალდეში → `install-clinic-ca.cmd` (ადმინისტრატორის უფლებას თავად ითხოვს). Edge/Chrome/Firefox Windows-ის სანდო ცენტრებს ენდობიან — გაფრთხილება აღარ ჩანს. **`clinic-ca.key` სერვერიდან არ გაიტანოთ** (მისით ნებისმიერ საიტზე „სანდო“ სერტიფიკატის შექმნა შეიძლება).

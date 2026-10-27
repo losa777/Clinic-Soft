@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { usePresence } from "@/modules/chat/client/hooks";
 import { useChat, useChatClient } from "@/modules/chat/client/provider";
 import type { UiMessage } from "@/modules/chat/client/store";
+import { CallButton } from "@/modules/chat/components/call-panel";
 import { Composer, withFiles } from "@/modules/chat/components/composer";
 import { GroupInfoDialog } from "@/modules/chat/components/group-dialogs";
 import type { MessageActions } from "@/modules/chat/components/message-item";
@@ -210,6 +211,7 @@ function ConversationHeader({
           <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>
         </span>
       </button>
+      {c.type === "direct" && c.peer?.isActive && <CallButton user={c.peer} />}
       <Button variant="ghost" size="icon" onClick={onSearch} aria-label="ძებნა საუბარში" title="ძებნა საუბარში">
         <Search />
       </Button>

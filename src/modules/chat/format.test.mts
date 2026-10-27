@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { normalizeBody, previewText, snippet, systemText } from "./format.ts";
+import { callDuration, normalizeBody, previewText, snippet, systemText } from "./format.ts";
 import { linkify } from "./linkify.ts";
 import { dayLabel, lastSeenText, listTime, messageTime } from "./time.ts";
 
@@ -26,6 +26,15 @@ describe("ჩატი — ტექსტი", () => {
     assert.equal(previewText({ ...base, body: null, attachments: 2 }), "📎 ფაილი");
     assert.equal(previewText({ ...base, kind: "system", event: "member_left" }), "ნინო გავიდა ჯგუფიდან");
     assert.equal(systemText("member_added", "ნინო", "დავით მაისურაძე", null), "ჯგუფს დაემატა: დავით მაისურაძე");
+  });
+
+  it("ზარის ისტორია", () => {
+    assert.equal(callDuration(7), "0:07");
+    assert.equal(callDuration(222), "3:42");
+    assert.equal(callDuration(3725), "1:02:05");
+    assert.equal(systemText("call_ended", "ნინო", "დავითი", "222"), "📞 ნინო — ზარი, 3:42");
+    assert.equal(systemText("call_missed", "ნინო", "დავითი", null), "📞 ნინო — უპასუხო ზარი");
+    assert.equal(systemText("call_declined", "ნინო", "დავითი", null), "📞 ნინო — ზარი უარყოფილია");
   });
 });
 

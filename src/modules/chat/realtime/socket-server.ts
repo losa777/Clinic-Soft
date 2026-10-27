@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { CHAT_SOCKET_PATH, RATE_LIMITS } from "@/modules/chat/config";
 import { RateLimiter } from "@/modules/chat/rate-limit";
 import { authenticateSocket, isSameOrigin } from "@/modules/chat/realtime/auth";
+import { recordCall } from "@/modules/chat/realtime/call-log";
+import { CallRegistry } from "@/modules/chat/realtime/calls";
 import { awayMsFromEnv, PresenceStore } from "@/modules/chat/realtime/presence-store";
 import { type ChatServer, conversationRoom, sessionRoom, setChatServer, userRoom } from "@/modules/chat/realtime/registry";
 
@@ -29,6 +31,7 @@ function lastActiveAtOf(auth: Record<string, unknown>, now: number): number {
  * - სოკეტით მხოლოდ მიწოდება ხდება; შეტყობინებები და ცვლილებები REST API-თ მოდის (src/app/api/chat/).
  * - heartbeat: ping ყოველ 20 წამში, პასუხის გარეშე 20 წამში — კავშირი გაწყვეტილია (ტაბი დაიხურა / ქსელი).
  * - სტატუსები: presence-store.ts (ყველა კავშირის აქტივობით), ცვლილება — ყველა შესულს.
+ * - ზარები: calls.ts (სიგნალი სოკეტით, ხმა — WebRTC ბრაუზერებს შორის).
  */
 export function attachChatServer(httpServer: HttpServer): ChatServer {
   const io: ChatServer = new Server(httpServer, {
@@ -56,6 +59,18 @@ export function attachChatServer(httpServer: HttpServer): ChatServer {
 
   const presence = new PresenceStore(io, awayMsFromEnv());
   const typingLimiter = new RateLimiter(RATE_LIMITS.typing.capacity, RATE_LIMITS.typing.windowMs);
+  const callLimiter = new RateLimiter(RATE_LIMITS.call.capacity, RATE_LIMITS.call.windowMs);
+  const calls = new CallRegistry({
+    toSocket: (socketId) => io.to(socketId),
+    toUser: (userId, except) => (except ? io.to(userRoom(userId)).except(except) : io.to(userRoom(userId))),
+    isOnline: (userId) => (io.sockets.adapter.rooms.get(userRoom(userId))?.size ?? 0) > 0,
+    status: (userId) => presence.get(userId),
+    activeUser: async (userId) => {
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, firstName: true, lastName: true, avatarVersion: true, isActive: true } });
+      return u?.isActive ? { id: u.id, firstName: u.firstName, lastName: u.lastName, avatar: u.avatarVersion } : null;
+    },
+    record: (callerId, calleeId, event, seconds) => void recordCall(callerId, calleeId, event, seconds),
+  });
 
   io.on("connection", async (socket) => {
     const { userId, sid, expiresAt } = socket.data;
@@ -71,6 +86,7 @@ export function attachChatServer(httpServer: HttpServer): ChatServer {
     let presenceJoined = false;
     socket.on("disconnect", (reason) => {
       clearTimeout(expiry);
+      calls.socketGone(userId, socket.id);
       if (presenceJoined) presence.disconnect(userId, socket.id, SERVER_DISCONNECTS.has(reason));
     });
 
@@ -106,6 +122,19 @@ export function attachChatServer(httpServer: HttpServer): ChatServer {
       if (!socket.rooms.has(room) || !typingLimiter.take(String(userId))) return;
       socket.to(room).emit("typing", { conversationId, userId });
     });
+
+    socket.on("call:invite", (e, ack) => {
+      if (typeof ack !== "function") return;
+      if (!callLimiter.take(String(userId))) return ack({ ok: false, error: "ძალიან ბევრი ზარი — სცადეთ ცოტა ხანში" });
+      calls.invite(userId, socket.id, e).then(ack, (error) => {
+        console.error("ზარი ვერ დაიწყო:", error);
+        ack({ ok: false, error: "ზარი ვერ განხორციელდა" });
+      });
+    });
+    socket.on("call:accept", (e, ack) => typeof ack === "function" && ack(calls.accept(userId, socket.id, e)));
+    socket.on("call:decline", (e) => calls.decline(userId, e));
+    socket.on("call:hangup", (e) => calls.hangup(userId, socket.id, e));
+    socket.on("call:signal", (e) => calls.signal(userId, socket.id, e));
   });
 
   setChatServer(io, presence);

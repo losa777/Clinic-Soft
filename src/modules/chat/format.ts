@@ -26,7 +26,16 @@ export function isBodyTooLong(text: string): boolean {
   return text.length > MESSAGE_MAX_LENGTH;
 }
 
-/** ჯგუფის სისტემური შეტყობინება (მოქმედებითი ბრუნვის გარეშე — სახელის ფორმა არ იცვლება). */
+/** ზარის ხანგრძლივობა: 0:07, 3:42, 1:02:05. */
+export function callDuration(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
+}
+
+/** სისტემური შეტყობინება — ჯგუფის მოვლენა ან ზარი (მოქმედებითი ბრუნვის გარეშე — სახელის ფორმა არ იცვლება). */
 export function systemText(event: SystemEvent | string | null, actor: string, target: string | null, body: string | null): string {
   switch (event) {
     case "created":
@@ -39,6 +48,12 @@ export function systemText(event: SystemEvent | string | null, actor: string, ta
       return `ჯგუფიდან ამოიშალა: ${target ?? "თანამშრომელი"}`;
     case "member_left":
       return `${actor} გავიდა ჯგუფიდან`;
+    case "call_ended":
+      return `📞 ${actor} — ზარი, ${callDuration(Number(body) || 0)}`;
+    case "call_missed":
+      return `📞 ${actor} — უპასუხო ზარი`;
+    case "call_declined":
+      return `📞 ${actor} — ზარი უარყოფილია`;
     default:
       return "";
   }

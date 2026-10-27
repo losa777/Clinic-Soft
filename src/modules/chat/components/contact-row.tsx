@@ -3,12 +3,13 @@
 import { Star } from "lucide-react";
 import { usePresence } from "@/modules/chat/client/hooks";
 import { useChat, useChatClient } from "@/modules/chat/client/provider";
+import { CallButton } from "@/modules/chat/components/call-panel";
 import { presenceText, UserAvatar } from "@/modules/chat/components/presence";
 import { fullName } from "@/modules/chat/format";
 import type { ChatContact } from "@/modules/chat/types";
 import { cn } from "@/lib/utils";
 
-/** თანამშრომელი (ძებნის შედეგი / Favorites): სტატუსი, როლი, ვარსკვლავი. დაჭერა — პირადი საუბარი. */
+/** თანამშრომელი (ძებნის შედეგი / Favorites): სტატუსი, როლი, დარეკვა, ვარსკვლავი. დაჭერა — პირადი საუბარი. */
 export function ContactRow({ contact, onOpen }: { contact: ChatContact; onOpen: (contact: ChatContact) => void }) {
   const client = useChatClient();
   const presence = usePresence(contact.id);
@@ -31,6 +32,7 @@ export function ContactRow({ contact, onOpen }: { contact: ChatContact; onOpen: 
           </span>
         </span>
       </button>
+      {contact.isActive && <CallButton user={contact} className="size-7 text-muted-foreground" />}
       <button
         type="button"
         onClick={() => void client.toggleFavorite(contact)}
