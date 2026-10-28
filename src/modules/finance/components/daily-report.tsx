@@ -3,6 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 import type { DailyReport as Report } from "@/modules/finance/server/reports";
 import { paymentMethodLabel } from "@/modules/finance/types";
+import { BankTotals } from "./bank-totals";
 import { Money } from "./invoice-status-badge";
 
 /** დღის ანგარიში: გადახდები მეთოდებით, დაბრუნებები, ინვოისები და დაზღვევა, სერვისების მიხედვით, გაუქმებული ოპერაციები. */
@@ -17,6 +18,8 @@ export function DailyReport({ report: r, title }: { report: Report; title: strin
         <Stat label="დაბრუნებები" value={r.refunds.total} hint={`ოპერაცია: ${r.refunds.count}`} danger={Number(r.refunds.total) > 0} />
         <Stat label="სულ შემოსავალი" value={r.net.total} hint={`გადახდა: ${r.payments.count}`} strong />
       </div>
+
+      <BankTotals rows={r.byBank} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label={`ინვოისი (${r.invoices.count})`} value={r.invoices.total} hint="გაუქმებულის გარეშე" />

@@ -185,8 +185,16 @@ async function main() {
         userId,
       ),
     );
+  // ბარათით — პირველი აქტიური ბანკი (db:setup ამატებს სატესტოს); ბანკი თუ არ არის — null
+  const bankId = (await prisma.bank.findFirst({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { id: true } }))?.id ?? null;
   const pay = (invoiceId: number, method: "cash" | "card", amount: string, received: string | null = null) =>
-    tx((t) => acceptPayment(t, { invoiceId, method, amount, receivedAmount: received, cardReference: method === "card" ? "4321" : null }, userId));
+    tx((t) =>
+      acceptPayment(
+        t,
+        { invoiceId, method, amount, receivedAmount: received, cardReference: method === "card" ? "4321" : null, bankId: method === "card" ? bankId : null },
+        userId,
+      ),
+    );
 
   // 1. დაზღვეული („ბალანსი“): კონსულტაცია 70% (ლიმიტი 50) + ანალიზი 80% → სრულად ნაღდით, ხურდით
   const i1 = await invoice(0, [["თერაპევტის კონსულტაცია", 1, "0"], ["სისხლის საერთო ანალიზი", 1, "0"]]);
@@ -201,7 +209,7 @@ async function main() {
   const i4 = await invoice(4, [["კუნთშიდა ინექცია", 3, "0"]]);
   await pay(i4.id, "cash", "30");
   await tx((t) =>
-    refundPayment(t, { invoiceId: i4.id, method: "cash", amount: "10", reason: "ერთი ინექცია არ ჩატარდა", cardReference: null }, userId),
+    refundPayment(t, { invoiceId: i4.id, method: "cash", amount: "10", reason: "ერთი ინექცია არ ჩატარდა", cardReference: null, bankId: null }, userId),
   );
   // 5. გაუქმებული ინვოისი
   const i5 = await invoice(7, [["გულმკერდის რენტგენოგრაფია", 1, "0"]]);

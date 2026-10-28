@@ -143,9 +143,9 @@ describe("როლით წვდომა — უფლებები (ნ�
     for (const role of ["doctor", "registrar", "nurse", "accountant", "director"]) assert.equal(can(user(role), "reporting.export"), false, role);
   });
 
-  it("ქოლ ცენტრი — მხოლოდ დაჯავშნა (ჯავშნის მართვა, სამედიცინო და ფინანსური მონაცემები — არა)", () => {
+  it("ქოლ ცენტრი — დაჯავშნა, გადატანა, გაუქმება (სტატუსი, სამედიცინო და ფინანსური მონაცემები — არა)", () => {
     const c = user("callcenter");
-    assert.deepEqual(c.permissions, ["appointments.book"]);
+    assert.deepEqual(c.permissions, ["appointments.book", "appointments.change"]);
     for (const p of ["appointments.manage", "emr.view", "invoices.view", "invoices.create", "reporting.view"] as const) assert.equal(can(c, p), false, p);
     assert.equal(routeRedirect("/callcenter", "callcenter"), null);
     assert.equal(routeRedirect("/registrar", "callcenter"), "/callcenter");

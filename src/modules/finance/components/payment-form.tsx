@@ -17,7 +17,8 @@ import { formatGel } from "@/lib/money";
 import { cancelInvoiceAction } from "@/modules/finance/actions/invoice-actions";
 import { acceptPaymentAction, type PaymentResult, refundAction } from "@/modules/finance/actions/payment-actions";
 import { cashChange, fromTetri, toTetri } from "@/modules/finance/calc";
-import { PAYMENT_METHODS, type PaymentMethod } from "@/modules/finance/types";
+import { type BankOption, PAYMENT_METHODS, type PaymentMethod } from "@/modules/finance/types";
+import { cn } from "@/lib/utils";
 
 type Dialogs = "payment" | "refund" | "cancel" | null;
 
@@ -29,6 +30,7 @@ export function InvoiceActions({
   paid,
   paidByMethod,
   can,
+  banks,
   receiptHref,
 }: {
   invoiceId: number;
@@ -37,6 +39,8 @@ export function InvoiceActions({
   paid: string;
   paidByMethod: Record<PaymentMethod, string>;
   can: { pay: boolean; refund: boolean; cancel: boolean };
+  /** აქტიური ბანკები (ბარათით გადახდა/დაბრუნება) */
+  banks: BankOption[];
   /** ქვითრის მისამართის თარგი: {paymentId} იცვლება; null — როლს ბეჭდვა არ აქვს */
   receiptHref: string | null;
 }) {
@@ -70,9 +74,9 @@ export function InvoiceActions({
 
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && close()}>
         <DialogContent className="sm:max-w-md">
-          {dialog === "payment" && <PaymentForm invoiceId={invoiceId} debt={debt} receiptHref={receiptHref} onDone={close} />}
+          {dialog === "payment" && <PaymentForm invoiceId={invoiceId} debt={debt} banks={banks} receiptHref={receiptHref} onDone={close} />}
           {dialog === "refund" && (
-            <RefundForm invoiceId={invoiceId} paid={paid} paidByMethod={paidByMethod} receiptHref={receiptHref} onDone={close} />
+            <RefundForm invoiceId={invoiceId} paid={paid} paidByMethod={paidByMethod} banks={banks} receiptHref={receiptHref} onDone={close} />
           )}
           {dialog === "cancel" && <CancelForm invoiceId={invoiceId} invoiceNumber={invoiceNumber} paid={paid} onDone={close} />}
         </DialogContent>
@@ -112,6 +116,45 @@ function useSubmit<T extends ActionResult | PaymentResult>(onDone: () => void, r
   };
 }
 
+/** ბანკის არჩევა ბარათით ოპერაციისას (დიდი ღილაკები — ბანკები ცოტაა); ბანკი არ არის დამატებული — არაფერი ჩანს. */
+function BankChoice({
+  id,
+  banks,
+  value,
+  onChange,
+  error,
+}: {
+  id: string;
+  banks: BankOption[];
+  value: number | null;
+  onChange: (id: number) => void;
+  error?: string;
+}) {
+  if (!banks.length) return null;
+  return (
+    <FormField id={id} label="ბანკი *" error={error}>
+      <div id={id} role="radiogroup" aria-invalid={error ? true : undefined} className="grid grid-cols-2 gap-2">
+        {banks.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            role="radio"
+            aria-checked={value === b.id}
+            onClick={() => onChange(b.id)}
+            className={cn(
+              "flex min-h-11 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium transition-colors outline-none hover:border-primary focus-visible:ring-3 focus-visible:ring-ring/50",
+              value === b.id ? "border-primary bg-primary text-primary-foreground" : "text-foreground",
+              error && value === null && "border-destructive",
+            )}
+          >
+            {b.name}
+          </button>
+        ))}
+      </div>
+    </FormField>
+  );
+}
+
 function FormError({ error }: { error?: string }) {
   return error ? (
     <Alert variant="destructive">
@@ -123,11 +166,13 @@ function FormError({ error }: { error?: string }) {
 export function PaymentForm({
   invoiceId,
   debt,
+  banks,
   receiptHref,
   onDone,
 }: {
   invoiceId: number;
   debt: string;
+  banks: BankOption[];
   receiptHref: string | null;
   onDone: () => void;
 }) {
@@ -135,6 +180,8 @@ export function PaymentForm({
   const [amount, setAmount] = useState(debt);
   const [received, setReceived] = useState("");
   const [cardReference, setCardReference] = useState("");
+  // ერთი ბანკი — წინასწარ არჩეული
+  const [bankId, setBankId] = useState<number | null>(banks.length === 1 ? banks[0].id : null);
   const { run, pending, errors, formError } = useSubmit<PaymentResult>(onDone, receiptHref);
 
   // ხურდა — მხოლოდ საჩვენებლად (სერვერი თავიდან ითვლის)
@@ -152,7 +199,9 @@ export function PaymentForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        run(() => acceptPaymentAction({ invoiceId, method, amount, receivedAmount: method === "cash" ? received : "", cardReference }));
+        run(() =>
+          acceptPaymentAction({ invoiceId, method, amount, receivedAmount: method === "cash" ? received : "", cardReference, bankId: method === "card" ? bankId : null }),
+        );
       }}
       className="flex flex-col gap-4"
       noValidate
@@ -190,17 +239,20 @@ export function PaymentForm({
           />
         </FormField>
       ) : (
-        <FormField id="payment-card" label="ტრანზაქციის ნომერი ან ბარათის ბოლო 4 ციფრი" error={errors.cardReference} hint="სრული ბარათის ნომერი არ შეიყვანოთ">
-          <Input
-            id="payment-card"
-            value={cardReference}
-            onChange={(e) => setCardReference(e.target.value)}
-            maxLength={30}
-            autoComplete="off"
-            aria-invalid={errors.cardReference ? true : undefined}
-            className="h-10"
-          />
-        </FormField>
+        <>
+          <BankChoice id="payment-bank" banks={banks} value={bankId} onChange={setBankId} error={errors.bankId} />
+          <FormField id="payment-card" label="ტრანზაქციის ნომერი ან ბარათის ბოლო 4 ციფრი" error={errors.cardReference} hint="სრული ბარათის ნომერი არ შეიყვანოთ">
+            <Input
+              id="payment-card"
+              value={cardReference}
+              onChange={(e) => setCardReference(e.target.value)}
+              maxLength={30}
+              autoComplete="off"
+              aria-invalid={errors.cardReference ? true : undefined}
+              className="h-10"
+            />
+          </FormField>
+        </>
       )}
       {change !== null && (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-lg font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
@@ -224,12 +276,14 @@ function RefundForm({
   invoiceId,
   paid,
   paidByMethod,
+  banks,
   receiptHref,
   onDone,
 }: {
   invoiceId: number;
   paid: string;
   paidByMethod: Record<PaymentMethod, string>;
+  banks: BankOption[];
   receiptHref: string | null;
   onDone: () => void;
 }) {
@@ -237,13 +291,14 @@ function RefundForm({
   const [amount, setAmount] = useState(paidByMethod[method]);
   const [reason, setReason] = useState("");
   const [cardReference, setCardReference] = useState("");
+  const [bankId, setBankId] = useState<number | null>(banks.length === 1 ? banks[0].id : null);
   const { run, pending, errors, formError } = useSubmit<PaymentResult>(onDone, receiptHref);
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        run(() => refundAction({ invoiceId, method, amount, reason, cardReference }));
+        run(() => refundAction({ invoiceId, method, amount, reason, cardReference, bankId: method === "card" ? bankId : null }));
       }}
       className="flex flex-col gap-4"
       noValidate
@@ -279,9 +334,12 @@ function RefundForm({
         />
       </FormField>
       {method === "card" && (
-        <FormField id="refund-card" label="ტრანზაქციის ნომერი ან ბოლო 4 ციფრი" error={errors.cardReference}>
-          <Input id="refund-card" value={cardReference} onChange={(e) => setCardReference(e.target.value)} maxLength={30} className="h-10" />
-        </FormField>
+        <>
+          <BankChoice id="refund-bank" banks={banks} value={bankId} onChange={setBankId} error={errors.bankId} />
+          <FormField id="refund-card" label="ტრანზაქციის ნომერი ან ბოლო 4 ციფრი" error={errors.cardReference}>
+            <Input id="refund-card" value={cardReference} onChange={(e) => setCardReference(e.target.value)} maxLength={30} className="h-10" />
+          </FormField>
+        </>
       )}
       <FormField id="refund-reason" label="დაბრუნების მიზეზი *" error={errors.reason}>
         <Textarea id="refund-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} autoFocus />

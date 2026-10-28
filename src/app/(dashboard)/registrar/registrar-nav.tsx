@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarPlus, FileText, HandCoins, ListChecks, Search, UserPlus, Wallet } from "lucide-react";
+import { BarChart3, CalendarPlus, FileText, HandCoins, ListChecks, Scale, Search, UserPlus, Wallet } from "lucide-react";
 import { APPOINTMENT_ROUTES } from "@/lib/appointment-routes";
 import { NewPatientButton } from "@/components/patients/new-patient-dialog";
 import { useActiveTabIntoView } from "@/components/use-active-tab";
@@ -18,6 +18,7 @@ const LINKS = [
   { href: NEW_PATIENT, label: "ახალი პაციენტი", icon: UserPlus },
   { href: APPOINTMENT_ROUTES.registrar.booking, label: "ვიზიტის დაჯავშნა", icon: CalendarPlus },
   { href: APPOINTMENT_ROUTES.registrar.list, label: "ჯავშნები", icon: ListChecks },
+  { href: "/registrar/first-visits", label: "პირველადი პაციენტები", icon: Scale },
   { href: finance.invoices, label: "ინვოისები", icon: FileText },
   { href: finance.cash, label: "სალარო", icon: Wallet },
   { href: finance.debts, label: "დავალიანებები", icon: HandCoins },

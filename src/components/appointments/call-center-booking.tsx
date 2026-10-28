@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CalendarCheck, CircleCheck, DoorOpen, PhoneCall, RotateCcw, Timer, UserRound } from "lucide-react";
+import { CalendarCheck, CircleCheck, DoorOpen, PhoneCall, RotateCcw, Star, Timer, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { type PickerItem, SearchPicker } from "@/components/search-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,7 +13,9 @@ import type { BookingDoctor, BookingPatient, SpecialtyOption } from "@/lib/appoi
 import { addDays, formatDate, isoWeekday, type Slot, WEEKDAYS, weekdayName } from "@/lib/appointment-slots";
 import { cn } from "@/lib/utils";
 import { DayPicker } from "./booking-wizard";
+import { allBalance, FirstVisitHint, useFirstVisitBalance } from "./first-visit-hint";
 import { PatientPicker } from "./patient-picker";
+import { PatientUpcoming } from "./patient-upcoming";
 import { SlotGrid, useDoctorSlots } from "./slot-grid";
 
 /** ექიმის უახლოესი სამუშაო დღე (დღეიდან 14 დღეში); არ აქვს — დღეს. */
@@ -31,6 +33,7 @@ type Booked = { patient: string; doctor: string; specialty: string; date: string
  * ქოლ ცენტრის დაჯავშნა — ერთ გვერდზე, ზარის თანმიმდევრობით: ზემოთ პაციენტი (ძებნა ტელეფონით/სახელით/პირადი ნომრით,
  * ახალის რეგისტრაცია იქვე), მარცხნივ ექიმები (მაშინვე ჩანს — ძებნა, სპეციალობის ფილტრი), მარჯვნივ დღე, დრო და
  * დადასტურება. ექიმი და დრო შეიძლება პაციენტამდეც შეირჩეს. დაჯავშნის შემდეგ — პაციენტისთვის წასაკითხი ტექსტი და „ახალი ზარი“.
+ * არჩეული პაციენტის მომავალი ჯავშნები — გადატანით და გაუქმებით (appointments.change).
  * ლოგიკა (სლოტები, კონფლიქტები, შენახვა) — იგივე, რაც რეგისტრატურის დაჯავშნაში (appointments.book).
  */
 export function CallCenterBooking({ specialties, doctors, today }: { specialties: SpecialtyOption[]; doctors: BookingDoctor[]; today: string }) {
@@ -54,6 +57,10 @@ export function CallCenterBooking({ specialties, doctors, today }: { specialties
     [doctors],
   );
   const slots = useDoctorSlots({ doctorId, date, patientId: patient?.id, reloadKey });
+  // პირველადი პაციენტების დაბალანსება: ბარათებზე „N პირველადი“, ახალ პაციენტზე — რეკომენდებული ექიმი სპეციალობით
+  const balance = allBalance(useFirstVisitBalance(date, patient?.id ?? null, reloadKey));
+  // მინიშნება — არჩეული ექიმის სპეციალობისთვის, ან (ექიმამდე) არჩეული სპეციალობის ჩიპისთვის
+  const hint = balance.recommended.get(doctor?.specialtyId ?? specialtyId ?? -1) ?? null;
 
   function chooseDoctor(id: number) {
     const d = doctors.find((x) => x.id === id);
@@ -153,8 +160,10 @@ export function CallCenterBooking({ specialties, doctors, today }: { specialties
             პაციენტი
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
           <PatientPicker key={call} value={patient} onChange={choosePatient} />
+          {/* „როდის მაქვს ჩაწერა?“ — გადატანა/გაუქმება იქვე; გადატანისას სლოტებიც ახლდება */}
+          {patient && <PatientUpcoming patientId={patient.id} today={today} reloadKey={reloadKey} onChanged={() => setReloadKey((k) => k + 1)} />}
         </CardContent>
       </Card>
 
@@ -187,6 +196,7 @@ export function CallCenterBooking({ specialties, doctors, today }: { specialties
                 </Chip>
               ))}
             </div>
+            {hint && <FirstVisitHint recommended={hint} date={date} today={today} selected={doctorId === hint.doctorId} onChoose={() => chooseDoctor(hint.doctorId)} />}
             <div role="radiogroup" aria-label="ექიმი" className="grid max-h-[60vh] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
               {shownDoctors.map((d) => (
                 <button
@@ -200,8 +210,18 @@ export function CallCenterBooking({ specialties, doctors, today }: { specialties
                     d.id === doctorId && "border-primary bg-primary/5 ring-1 ring-primary",
                   )}
                 >
-                  <span className="font-medium">{d.name}</span>
+                  <span className="flex w-full items-center gap-1.5 font-medium">
+                    {d.name}
+                    {balance.recommended.get(d.specialtyId)?.doctorId === d.id && (
+                      <Star className="size-3.5 fill-amber-400 text-amber-500" aria-label="რეკომენდებული პირველადი პაციენტისთვის" />
+                    )}
+                  </span>
                   <span className="text-xs text-primary">{d.specialty}</span>
+                  {balance.doctors.has(d.id) && (
+                    <span className="text-xs">
+                      {date === today ? "დღეს" : formatDate(date)}: <b>{balance.doctors.get(d.id)!.first}</b> პირველადი · {balance.doctors.get(d.id)!.all} ვიზიტი
+                    </span>
+                  )}
                   <span className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Timer className="size-3.5" />

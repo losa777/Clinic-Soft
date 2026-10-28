@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { type FinanceRoutes, receiptUrl } from "@/modules/finance/routes";
-import { type InvoiceDetail, paymentMethodLabel, paymentTypeLabel, visitTypeLabel } from "@/modules/finance/types";
+import { type BankOption, type InvoiceDetail, paymentMethodLabel, paymentTypeLabel, visitTypeLabel } from "@/modules/finance/types";
 import { InvoiceStatusBadge, Money } from "./invoice-status-badge";
 import { InvoiceActions } from "./payment-form";
 
@@ -15,10 +15,13 @@ export function InvoiceView({
   invoice: i,
   routes,
   can,
+  banks,
 }: {
   invoice: InvoiceDetail;
   routes: FinanceRoutes;
   can: { pay: boolean; refund: boolean; cancel: boolean };
+  /** აქტიური ბანკები ბარათით გადახდისთვის */
+  banks: BankOption[];
 }) {
   const active = i.status !== "cancelled";
   const receiptTemplate = routes.receipts ? `${routes.receipts}/{paymentId}` : null;
@@ -51,6 +54,7 @@ export function InvoiceView({
             paid={i.totals.paid}
             paidByMethod={i.paidByMethod}
             can={can}
+            banks={banks}
             receiptHref={can.pay || can.refund ? receiptTemplate : null}
           />
         )}
@@ -186,6 +190,7 @@ export function InvoiceView({
                             მიღებული <Money value={p.receivedAmount} />, ხურდა <Money value={p.changeAmount} />
                           </>
                         )}
+                        {p.bank && <span className="font-medium text-foreground">{p.bank} </span>}
                         {p.cardReference && `ტრანზაქცია: ${p.cardReference}`}
                         {p.reason && ` ${p.reason}`}
                       </TableCell>

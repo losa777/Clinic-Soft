@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { CalendarCheck, CircleCheck, DoorOpen, Timer, X } from "lucide-react";
+import { CalendarCheck, CircleCheck, DoorOpen, Star, Timer, X } from "lucide-react";
 import { toast } from "sonner";
 import { FormField } from "@/components/form-field";
 import { type PickerItem, SearchPicker } from "@/components/search-picker";
@@ -17,6 +17,7 @@ import type { AppointmentRoutes } from "@/lib/appointment-routes";
 import { BOOKING_HORIZON_DAYS, type BookingDoctor, type BookingPatient, type SpecialtyOption } from "@/lib/appointment-schema";
 import { addDays, formatDate, isoWeekday, type Slot, WEEKDAYS, weekdayName } from "@/lib/appointment-slots";
 import { cn } from "@/lib/utils";
+import { FirstVisitHint, specialtyBalance, useFirstVisitBalance } from "./first-visit-hint";
 import { PatientPicker } from "./patient-picker";
 import { SlotGrid, useDoctorSlots } from "./slot-grid";
 
@@ -72,6 +73,8 @@ export function BookingWizard({
   );
   const doctor = doctors.find((d) => d.id === doctorId) ?? null;
   const slots = useDoctorSlots({ doctorId, date, patientId: patient?.id, reloadKey });
+  // პირველადი პაციენტების დაბალანსება: სპეციალობის ექიმებს — „N პირველადი“, ახალ პაციენტზე — რეკომენდებული ექიმი
+  const balance = specialtyBalance(useFirstVisitBalance(date, patient?.id ?? null, reloadKey), specialtyId);
 
   function resetSlot() {
     setSlot(null);
@@ -169,6 +172,16 @@ export function BookingWizard({
             </div>
           </FormField>
 
+          {specialtyId !== null && balance.recommended && (
+            <FirstVisitHint
+              recommended={balance.recommended}
+              date={date}
+              today={today}
+              selected={doctorId === balance.recommended.doctorId}
+              onChoose={() => chooseDoctor(balance.recommended!.doctorId)}
+            />
+          )}
+
           {specialtyId !== null && (
             <div role="radiogroup" aria-label="ექიმი" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {specialtyDoctors.map((d) => (
@@ -183,7 +196,15 @@ export function BookingWizard({
                     d.id === doctorId && "border-primary bg-primary/5 ring-1 ring-primary",
                   )}
                 >
-                  <span className="font-medium">{d.name}</span>
+                  <span className="flex w-full items-center gap-1.5 font-medium">
+                    {d.name}
+                    {balance.recommended?.doctorId === d.id && <Star className="size-3.5 fill-amber-400 text-amber-500" aria-label="რეკომენდებული" />}
+                  </span>
+                  {balance.doctors.has(d.id) && (
+                    <span className="text-xs">
+                      {date === today ? "დღეს" : formatDate(date)}: <b>{balance.doctors.get(d.id)!.first}</b> პირველადი · {balance.doctors.get(d.id)!.all} ვიზიტი
+                    </span>
+                  )}
                   <span className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Timer className="size-3.5" />

@@ -76,6 +76,15 @@ const cardReferenceSchema = z
   })
   .transform((v) => v || null);
 
+/** ბარათით ოპერაციის ბანკი (სავალდებულოა, თუ ბანკები დამატებულია — სერვერი ამოწმებს: server/banks.ts); ცარიელი — null. */
+const bankIdSchema = z
+  .number()
+  .int()
+  .positive()
+  .nullable()
+  .optional()
+  .transform((v) => v ?? null);
+
 export const paymentSchema = z
   .object({
     invoiceId: z.number().int().positive(),
@@ -84,6 +93,7 @@ export const paymentSchema = z
     /** ნაღდი: მიღებული თანხა (ხურდის გამოსათვლელად); ცარიელი — ზუსტი თანხა */
     receivedAmount: z.union([z.literal(""), amountSchema("შეიყვანეთ მიღებული თანხა")]).transform((v) => v || null),
     cardReference: cardReferenceSchema,
+    bankId: bankIdSchema,
   });
 export type PaymentInput = z.input<typeof paymentSchema>;
 
@@ -93,6 +103,7 @@ export const refundSchema = z.object({
   amount: positiveAmountSchema(),
   reason: reason("დაბრუნების მიზეზი"),
   cardReference: cardReferenceSchema,
+  bankId: bankIdSchema,
 });
 export type RefundInput = z.input<typeof refundSchema>;
 

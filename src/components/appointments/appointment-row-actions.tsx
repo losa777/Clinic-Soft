@@ -27,7 +27,7 @@ import { SlotGrid, useDoctorSlots } from "./slot-grid";
 
 type ChangeableStatus = "booked" | "arrived" | "no_show";
 
-/** ჯავშნის მოქმედებები ცხრილში: სტატუსის შეცვლა, გადატანა, გაუქმება. */
+/** ჯავშნის მოქმედებები ცხრილში: სტატუსის შეცვლა, გადატანა, გაუქმება. CancelForm / RescheduleForm — ქოლ ცენტრის გვერდიც იყენებს. */
 export function AppointmentRowActions({ row, today }: { row: AppointmentRow; today: string }) {
   const [dialog, setDialog] = useState<"cancel" | "reschedule" | null>(null);
   const { run, pending } = useSubmit(() => setDialog(null));
@@ -120,7 +120,7 @@ function Who({ row }: { row: AppointmentRow }) {
   );
 }
 
-function CancelForm({ row, onDone }: { row: AppointmentRow; onDone: () => void }) {
+export function CancelForm({ row, onDone }: { row: AppointmentRow; onDone: () => void }) {
   const [reason, setReason] = useState("");
   const { run, pending, errors, formError } = useSubmit(onDone);
 
@@ -168,7 +168,7 @@ function CancelForm({ row, onDone }: { row: AppointmentRow; onDone: () => void }
   );
 }
 
-function RescheduleForm({ row, today, onDone }: { row: AppointmentRow; today: string; onDone: () => void }) {
+export function RescheduleForm({ row, today, onDone }: { row: AppointmentRow; today: string; onDone: () => void }) {
   const [date, setDate] = useState(row.date < today ? today : row.date);
   const [slot, setSlot] = useState<Slot | null>(null);
   const slots = useDoctorSlots({ doctorId: row.doctor.id, date, patientId: row.patient.id, excludeAppointmentId: row.id });

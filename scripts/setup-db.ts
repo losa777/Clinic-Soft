@@ -1292,6 +1292,32 @@ async function createReportingTables() {
   `);
 }
 
+/** ბანკები ბარათით გადახდისთვის (ადმინი → კლინიკა → „ბანკები“) და payments.bank_id. */
+async function createBankTables() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS banks (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      name       VARCHAR(100) NOT NULL,
+      is_active  TINYINT(1)   NOT NULL DEFAULT 1,
+      sort_order SMALLINT     NOT NULL DEFAULT 0,
+      created_at DATETIME     NOT NULL,
+      UNIQUE INDEX uq_banks_name (name)
+    ) ${TABLE_OPTIONS}
+  `);
+  await ensureColumn("payments", "bank_id", "INT NULL AFTER card_reference");
+  await ensureIndex("payments", "idx_payments_bank", "bank_id");
+  await ensureConstraint("payments", "fk_payments_bank", "FOREIGN KEY (bank_id) REFERENCES banks (id)");
+}
+
+/** სატესტო ბანკები — მხოლოდ ცარიელ ცხრილში (ადმინის ცვლილებები რჩება). */
+async function seedBanks() {
+  if (await prisma.bank.count()) return;
+  for (const [i, name] of ["საქართველოს ბანკი", "თიბისი ბანკი"].entries()) {
+    await prisma.bank.create({ data: { name, sortOrder: i, createdAt: new Date() } });
+  }
+  console.log("✔ ბანკები: საქართველოს ბანკი, თიბისი ბანკი");
+}
+
 /** ნაგულისხმევი კატეგორიები — მხოლოდ ცარიელ ცხრილში (ადმინის ცვლილებები რჩება). */
 async function seedIssueCategories() {
   if (await prisma.issueCategory.count()) return;
@@ -1607,6 +1633,7 @@ async function main() {
   await createUserRoleTables();
   await createIssueTables();
   await createReportingTables();
+  await createBankTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();
@@ -1624,6 +1651,7 @@ async function main() {
   console.log(`✔ როლები: ${Object.keys(SYSTEM_ROLES).length}${newRoles.length ? ` (ახალი: ${newRoles.join(", ")})` : ""}`);
   await seedPermissions();
   await grantNewRoleDefaults(newRoles);
+  await seedBanks();
   await seedIssueCategories();
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);

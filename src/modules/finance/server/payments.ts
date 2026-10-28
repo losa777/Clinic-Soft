@@ -2,6 +2,7 @@ import "server-only";
 import type { z } from "zod";
 import { cashChange, checkPayment, checkRefund, invoiceDebt, toTetri } from "@/modules/finance/calc";
 import type { paymentSchema, refundSchema } from "@/modules/finance/schema";
+import { resolveCardBank } from "./banks";
 import { currentYear, type Db, dec } from "./db";
 import { FinanceError } from "./errors";
 import { lockInvoice, refreshInvoiceStatus } from "./invoices";
@@ -38,6 +39,7 @@ export async function acceptPayment(tx: Db, input: z.output<typeof paymentSchema
     if (!result.ok) throw new FinanceError(result.error, { receivedAmount: result.error });
     change = result.change;
   }
+  const bankId = await resolveCardBank(tx, input.method, input.bankId);
 
   const payment = await tx.payment.create({
     data: {
@@ -49,6 +51,7 @@ export async function acceptPayment(tx: Db, input: z.output<typeof paymentSchema
       receivedAmount: received === null ? null : dec(received),
       changeAmount: change === null ? null : dec(change),
       cardReference: input.method === "card" ? input.cardReference : null,
+      bankId,
       // ბარათით გადახდაც ცვლას მიეწერება, თუ ღიაა (მოლარის ანგარიშისთვის)
       cashShiftId: shiftId,
       createdById: userId,
@@ -70,6 +73,7 @@ export async function refundPayment(tx: Db, input: z.output<typeof refundSchema>
 
   const shiftId = await openShiftOf(tx, userId);
   if (input.method === "cash" && !shiftId) throw new FinanceError("ნაღდით დასაბრუნებლად ჯერ გახსენით სალაროს ცვლა");
+  const bankId = await resolveCardBank(tx, input.method, input.bankId);
 
   const payment = await tx.payment.create({
     data: {
@@ -79,6 +83,7 @@ export async function refundPayment(tx: Db, input: z.output<typeof refundSchema>
       method: input.method,
       amount: dec(amount),
       cardReference: input.method === "card" ? input.cardReference : null,
+      bankId,
       reason: input.reason,
       cashShiftId: shiftId,
       createdById: userId,

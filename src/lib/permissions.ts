@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   "insurance.manage": "სადაზღვევო კომპანიების და პირობების მართვა",
   "appointments.manage": "ჯავშნების მართვა (სტატუსი, გადატანა, გაუქმება)",
   "appointments.book": "ახალი ჯავშნის შექმნა (მიმართვა, განმეორებითი ვიზიტი)",
+  "appointments.change": "ჯავშნის გადატანა და გაუქმება (სტატუსის შეცვლის გარეშე — მაგ. ქოლ ცენტრი)",
   "emr.view": "სამედიცინო ჩანაწერის ნახვა (ბარათი, ისტორია, კვლევები)",
   "emr.edit": "ვიზიტის ფორმა, დიაგნოზი, დანიშნულებები — საკუთარ ვიზიტებზე",
   "documents.sign": "სამედიცინო დოკუმენტის შექმნა და ხელმოწერა",
@@ -73,8 +74,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Partial<Record<SystemRoleCode, Permission
   warehouse: ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"],
   // ჯანდაცვის პორტალზე ატვირთვა: ნაგულისხმევად მხოლოდ საოპერაციო პაციენტები (ყველა — reporting.all_patients, ადმინის მინიჭებით)
   reporting: ["reporting.view", "reporting.export"],
-  // ქოლ ცენტრი: მხოლოდ დაჯავშნა (პაციენტის ძებნა/რეგისტრაცია ჯავშნისთვის, თავისუფალი დრო) — სამედიცინო და ფინანსური მონაცემების გარეშე
-  callcenter: ["appointments.book"],
+  // ქოლ ცენტრი: დაჯავშნა, გადატანა, გაუქმება (სტატუსი — „მობრძანდა“ და ა.შ. — არა) — სამედიცინო და ფინანსური მონაცემების გარეშე
+  callcenter: ["appointments.book", "appointments.change"],
 };
 
 export function isPermission(code: string): code is PermissionCode {

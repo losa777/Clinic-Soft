@@ -2,11 +2,12 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { type ActionFailure, type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
-import { loadDaySlots } from "@/lib/appointment-records";
+import { loadDaySlots, loadPatientUpcoming } from "@/lib/appointment-records";
 import {
   type AppointmentCancelInput,
   appointmentCancelSchema,
   type AppointmentInput,
+  type AppointmentRow,
   appointmentSchema,
   BOOKING_HORIZON_DAYS,
   type BookingPatient,
@@ -22,8 +23,10 @@ import {
   statusChangeSchema,
   appointmentStatusLabel,
 } from "@/lib/appointment-schema";
-import { addDays, formatDate, formatTime, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
-import { requirePermission } from "@/lib/dal";
+import { addDays, formatDate, formatTime, isRealDate, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
+import type { FirstVisitStats } from "@/lib/first-visit-balance";
+import { isFirstVisitPatient, loadFirstVisitStats } from "@/lib/first-visits";
+import { requireAnyPermission, requirePermission } from "@/lib/dal";
 import { notifyArrival } from "@/lib/notifications";
 import { prisma } from "@/lib/db";
 import { emitAppointmentChange } from "@/lib/live";
@@ -35,7 +38,7 @@ import { createPatientPolicy } from "@/modules/finance/server/insurance";
 
 /**
  * ჯავშნების Server Actions. ყველა მოქმედება სერვერზე ამოწმებს უფლებას (appointments.book — დაჯავშნა,
- * appointments.manage — გადატანა/სტატუსი/გაუქმება) და input-ს (zod);
+ * appointments.manage — გადატანა/სტატუსი/გაუქმება, appointments.change — მხოლოდ გადატანა/გაუქმება) და input-ს (zod);
  * ბაზასთან მუშაობა Prisma-თი ან პარამეტრიზებული $queryRaw-ით ხდება (SQL injection-ისგან დაცულია).
  */
 
@@ -211,7 +214,7 @@ export async function createAppointment(input: AppointmentInput): Promise<Bookin
 
 /** ჯავშნის გადატანა სხვა დროზე (იმავე ექიმთან). მხოლოდ „დაჯავშნილი“ სტატუსის ჯავშანი. */
 export async function rescheduleAppointment(input: RescheduleInput): Promise<ActionResult> {
-  const me = await requirePermission("appointments.manage");
+  const me = await requireAnyPermission("appointments.manage", "appointments.change");
   const parsed = rescheduleSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const start = new Date(parsed.data.start);
@@ -276,7 +279,7 @@ export async function changeAppointmentStatus(input: StatusChangeInput): Promise
 
 /** ჯავშნის გაუქმება მიზეზით. ჩანაწერი რჩება, სლოტი თავისუფლდება. დასრულებული ვიზიტი არ უქმდება. */
 export async function cancelAppointment(input: AppointmentCancelInput): Promise<ActionResult> {
-  const me = await requirePermission("appointments.manage");
+  const me = await requireAnyPermission("appointments.manage", "appointments.change");
   const parsed = appointmentCancelSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
 
@@ -293,4 +296,25 @@ export async function cancelAppointment(input: AppointmentCancelInput): Promise<
   if (count === 0) return failure("ჯავშანი ვერ მოიძებნა, უკვე გაუქმებულია, დასრულებულია ან პაციენტი მიღებაზეა");
   await emitAppointmentChange(parsed.data.appointmentId);
   return success("ჯავშანი გაუქმდა");
+}
+
+/** პაციენტის მომავალი ჯავშნები (ქოლ ცენტრი — პაციენტის არჩევისას): ნახვა, გადატანა, გაუქმება. */
+export async function patientUpcomingAppointments(patientId: number): Promise<AppointmentRow[]> {
+  await requirePermission("appointments.book");
+  if (!Number.isSafeInteger(patientId) || patientId <= 0) return [];
+  return loadPatientUpcoming(patientId);
+}
+
+/**
+ * პირველადი პაციენტების დაბალანსება (დაჯავშნისას): დღის სტატისტიკა სპეციალობებით და არჩეული პაციენტი ამ დღისთვის
+ * პირველადია თუ არა (null — პაციენტი არ არის არჩეული). რეკომენდაცია ბრაუზერში ითვლება (first-visit-balance.ts).
+ */
+export async function firstVisitBalance(date: string, patientId: number | null): Promise<{ stats: FirstVisitStats; patientIsNew: boolean | null } | null> {
+  await requirePermission("appointments.book");
+  if (!isRealDate(date)) return null;
+  const [stats, patientIsNew] = await Promise.all([
+    loadFirstVisitStats(date),
+    patientId && Number.isSafeInteger(patientId) && patientId > 0 ? isFirstVisitPatient(patientId, date) : Promise.resolve(null),
+  ]);
+  return { stats, patientIsNew };
 }

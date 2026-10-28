@@ -21,6 +21,7 @@ export const ENTITY_LABELS: Record<string, string> = {
   issue: "პრობლემა (ბილეთი)",
   issue_category: "პრობლემის კატეგორია",
   report: "ანგარიშგება (Excel)",
+  bank: "ბანკი",
 };
 
 export const ACTION_LABELS: Record<string, string> = {

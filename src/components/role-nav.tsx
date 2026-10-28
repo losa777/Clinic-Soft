@@ -15,6 +15,7 @@ import {
   FileText,
   FlaskConical,
   HandCoins,
+  Landmark,
   ListChecks,
   MessagesSquare,
   type LucideIcon,
@@ -66,6 +67,7 @@ export const NAV_ICONS = {
   chat: MessagesSquare,
   issues: TriangleAlert,
   surgical: Scissors,
+  banks: Landmark,
   export: FileSpreadsheet,
 } satisfies Record<string, LucideIcon>;
 

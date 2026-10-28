@@ -600,6 +600,8 @@ model Payment {
   receivedAmount  Decimal?      @map("received_amount") @db.Decimal(12, 2)
   changeAmount    Decimal?      @map("change_amount") @db.Decimal(12, 2)
   cardReference   String?       @map("card_reference") @db.VarChar(30)
+  /// ბარათით გადახდა/დაბრუნება — რომელი ბანკის ტერმინალით (ადმინი → „ბანკები“); ძველ ჩანაწერებზე null
+  bankId          Int?          @map("bank_id")
   reason          String?       @db.VarChar(500)
   cashShiftId     Int?          @map("cash_shift_id")
   createdById     Int?          @map("created_by")
@@ -608,13 +610,27 @@ model Payment {
   invoice         Invoice       @relation(fields: [invoiceId], references: [id])
   cashShift       CashShift?    @relation(fields: [cashShiftId], references: [id])
   createdBy       User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  bank            Bank?         @relation(fields: [bankId], references: [id])
   prints          ReceiptPrint[]
 
   @@index([invoiceId], map: "idx_payments_invoice")
+  @@index([bankId], map: "idx_payments_bank")
   @@index([createdAt], map: "idx_payments_created_at")
   @@index([cashShiftId], map: "idx_payments_cash_shift")
   @@index([createdById])
   @@map("payments")
+}
+
+/// ბანკები ბარათით გადახდისთვის (ადმინი → კლინიკა → „ბანკები“). გამოყენებული არ იშლება — ითიშება.
+model Bank {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique(map: "uq_banks_name") @db.VarChar(100)
+  isActive  Boolean   @default(true) @map("is_active")
+  sortOrder Int       @default(0) @map("sort_order") @db.SmallInt
+  createdAt DateTime  @map("created_at") @db.DateTime(0)
+  payments  Payment[]
+
+  @@map("banks")
 }
 
 enum ReceiptFormat {

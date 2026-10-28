@@ -163,6 +163,7 @@ function Receipt({ data: d, format, duplicate }: { data: ReceiptData; format: Fo
         thermal={thermal}
         rows={[
           ["მეთოდი", paymentMethodLabel(d.method)],
+          ...(d.bank ? [["ბანკი", d.bank] as [string, string]] : []),
           ...(d.receivedAmount && !refund ? [["მიღებული", formatGel(d.receivedAmount)] as [string, string]] : []),
           ...(d.changeAmount && Number(d.changeAmount) > 0 ? [["ხურდა", formatGel(d.changeAmount)] as [string, string]] : []),
           ...(d.cardReference ? [["ტრანზაქცია", d.cardReference] as [string, string]] : []),

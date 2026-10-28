@@ -24,6 +24,7 @@ export const CLINIC_LINKS: RoleNavLink[] = [
   { href: "/admin/doctors", label: "ექიმები", icon: "doctors" },
   { href: "/admin/specialties", label: "სპეციალობები", icon: "specialties" },
   { href: "/admin/insurance", label: "დაზღვევა", icon: "insurance" },
+  { href: "/admin/banks", label: "ბანკები", icon: "banks" },
   { href: "/admin/settings", label: "რეკვიზიტები", icon: "settings" },
 ];
 

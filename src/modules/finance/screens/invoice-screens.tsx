@@ -12,6 +12,7 @@ import { InvoiceList } from "@/modules/finance/components/invoice-list";
 import { InvoiceView } from "@/modules/finance/components/invoice-view";
 import { param, periodParams, positiveInt, type SearchParams, withParams } from "@/modules/finance/params";
 import { type FinanceRoutes, invoiceUrl } from "@/modules/finance/routes";
+import { loadActiveBanks } from "@/modules/finance/server/banks";
 import { listInvoices, loadInvoiceDetail, loadInvoiceFormData } from "@/modules/finance/server/invoices";
 import { INVOICE_STATUSES, type InvoiceStatus } from "@/modules/finance/types";
 import { LiveRefresh } from "@/components/live-refresh";
@@ -93,6 +94,8 @@ export async function InvoiceScreen({ routes, rawId, user }: { routes: FinanceRo
   const id = Number(rawId);
   const invoice = Number.isInteger(id) && id > 0 ? await loadInvoiceDetail(id) : null;
   if (!invoice) notFound();
+  // ბანკები — მხოლოდ გადახდის/დაბრუნების უფლებით (ბარათით ოპერაციის ფორმისთვის)
+  const banks = can(user, "payments.create") || can(user, "payments.refund") ? await loadActiveBanks() : [];
 
   return (
     <section className="flex flex-col gap-2">
@@ -104,6 +107,7 @@ export async function InvoiceScreen({ routes, rawId, user }: { routes: FinanceRo
       <InvoiceView
         invoice={invoice}
         routes={routes}
+        banks={banks}
         can={{
           pay: can(user, "payments.create") && routes.receipts !== null,
           refund: can(user, "payments.refund"),

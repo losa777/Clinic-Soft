@@ -5,6 +5,8 @@ import { bucketKeys, type Grouping, groupingFor } from "@/modules/finance/analyt
 import { prisma } from "@/lib/db";
 import { fromTetri, type Tetri } from "@/modules/finance/calc";
 import { MEDICAL_CATEGORIES } from "@/modules/inventory/labels";
+import type { BankTotal } from "@/modules/finance/types";
+import { loadBankTotals } from "./banks";
 import { int, periodRange, tetri } from "./db";
 
 /**
@@ -59,6 +61,8 @@ export type Analytics = {
   categories: CategoryRow[];
   services: ServiceRow[];
   insurers: InsurerRow[];
+  /** ბარათით შემოსული — ბანკების მიხედვით */
+  banks: BankTotal[];
 };
 
 /** UTC DATETIME → თბილისის თარიღი/თვე SQL-ში. */
@@ -233,7 +237,8 @@ export async function loadAnalytics(from: string, to: string, opts: { withInvent
   const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
   const previous = { from: addDays(from, -days), to: addDays(from, -1) };
   const grouping = groupingFor(from, to);
-  const [current, prior, trend, doctors, categories, services, insurers] = await Promise.all([
+  const period = periodRange(from, to);
+  const [current, prior, trend, doctors, categories, services, insurers, banks] = await Promise.all([
     loadTotals(from, to, opts.withInventory),
     loadTotals(previous.from, previous.to, opts.withInventory),
     loadTrend(from, to, grouping),
@@ -241,6 +246,7 @@ export async function loadAnalytics(from: string, to: string, opts: { withInvent
     loadCategories(from, to),
     loadServices(from, to, 15),
     loadInsurers(from, to),
+    loadBankTotals(period.from, period.to),
   ]);
-  return { from, to, previous, grouping, current, prior, trend, doctors, categories, services, insurers };
+  return { from, to, previous, grouping, current, prior, trend, doctors, categories, services, insurers, banks };
 }

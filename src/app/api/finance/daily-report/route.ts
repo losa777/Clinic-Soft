@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     ["შეჯამება", "ნაღდი დაბრუნებები", r.refunds.cash, "", "", ""],
     ["შეჯამება", "ბარათით დაბრუნებები", r.refunds.card, "", "", ""],
     ["შეჯამება", "სულ შემოსავალი (წმინდა)", r.net.total, "", "", ""],
+    ...r.byBank.map((b) => ["ბანკი (ბარათით)", b.name, b.net, "", "", `გადახდა ${b.payments} (${b.count}) − დაბრუნება ${b.refunds}`]),
     ["შეჯამება", `ინვოისები (${r.invoices.count})`, r.invoices.total, r.invoices.insurance, r.invoices.patient, ""],
     ...r.byService.map((s) => ["სერვისი", s.name, s.total, s.insurance, s.patient, s.quantity]),
     ...r.cancelledInvoices.map((c) => ["გაუქმებული ინვოისი", `${c.number} · ${c.patient}`, c.amount, "", "", `${c.reason} (${c.by ?? "—"}, ${c.at})`]),

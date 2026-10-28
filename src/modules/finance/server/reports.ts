@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { userWithRole } from "@/lib/user-roles";
 import { fromTetri } from "@/modules/finance/calc";
 import { FULL_ACCESS_ROLE } from "@/lib/permissions";
+import type { BankTotal } from "@/modules/finance/types";
+import { loadBankTotals } from "./banks";
 import { dayRange, formatDateTime, fullName, int, tetri } from "./db";
 
 /**
@@ -17,6 +19,8 @@ export type DailyReport = {
   payments: { cash: string; card: string; total: string; count: number };
   refunds: { cash: string; card: string; total: string; count: number };
   net: { cash: string; card: string; total: string };
+  /** ბარათით შემოსული — ბანკების მიხედვით */
+  byBank: BankTotal[];
   invoices: { count: number; total: string; discount: string; insurance: string; patient: string };
   byService: { serviceId: number | null; name: string; quantity: number; total: string; insurance: string; patient: string }[];
   cancelledInvoices: { id: number; number: string; patient: string; amount: string; reason: string; by: string | null; at: string }[];
@@ -27,7 +31,7 @@ export async function loadDailyReport(date: string, cashierId: number | null): P
   const { from, to } = dayRange(date);
   const byCashier = (column: Prisma.Sql) => (cashierId ? Prisma.sql`AND ${column} = ${cashierId}` : Prisma.empty);
 
-  const [payments, invoices, byService, cancelled, refunds] = await Promise.all([
+  const [payments, invoices, byService, cancelled, refunds, byBank] = await Promise.all([
     prisma.$queryRaw<{ type: string; method: string; total: unknown; n: bigint }[]>`
       SELECT p.type, p.method, SUM(p.amount) AS total, COUNT(*) AS n
       FROM payments p
@@ -61,6 +65,7 @@ export async function loadDailyReport(date: string, cashierId: number | null): P
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
+    loadBankTotals(from, to, cashierId),
   ]);
 
   const sum = (type: string, method?: string) =>
@@ -78,6 +83,7 @@ export async function loadDailyReport(date: string, cashierId: number | null): P
       card: fromTetri(sum("payment", "card") - sum("refund", "card")),
       total: fromTetri(sum("payment") - sum("refund")),
     },
+    byBank,
     invoices: {
       count: int(inv?.n),
       total: fromTetri(tetri(inv?.total)),

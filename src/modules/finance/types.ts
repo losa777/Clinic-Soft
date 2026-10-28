@@ -8,6 +8,12 @@ export type PaymentType = "payment" | "refund";
 export type PaymentMethod = "cash" | "card";
 export type VisitType = "outpatient" | "day_hospital";
 
+/** ბანკი ბარათით გადახდისთვის (ადმინი → „ბანკები“). */
+export type BankOption = { id: number; name: string };
+export type BankRow = BankOption & { isActive: boolean; sortOrder: number; payments: number };
+/** ბანკიდან შემოსული თანხები (ბარათით): bankId null — ბანკი მითითებული არ არის (ძველი გადახდები). */
+export type BankTotal = { bankId: number | null; name: string; payments: string; refunds: string; net: string; count: number };
+
 export const INVOICE_STATUSES: { value: InvoiceStatus; label: string }[] = [
   { value: "unpaid", label: "გადაუხდელი" },
   { value: "partial", label: "ნაწილობრივ გადახდილი" },
@@ -81,6 +87,8 @@ export type PaymentRow = {
   receivedAmount: string | null;
   changeAmount: string | null;
   cardReference: string | null;
+  /** ბარათით — ბანკის დასახელება */
+  bank: string | null;
   reason: string | null;
   createdAt: string;
   createdBy: string | null;
@@ -154,6 +162,7 @@ export type ReceiptData = {
   receivedAmount: string | null;
   changeAmount: string | null;
   cardReference: string | null;
+  bank: string | null;
   reason: string | null;
   /** ინვოისის ნარჩენი ვალი ამ ოპერაციის შემდეგ */
   remainingDebt: string;

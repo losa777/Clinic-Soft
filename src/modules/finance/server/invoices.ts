@@ -322,7 +322,7 @@ export async function loadInvoiceDetail(id: number): Promise<InvoiceDetail | nul
       createdBy: { select: { firstName: true, lastName: true } },
       cancelledBy: { select: { firstName: true, lastName: true } },
       items: { orderBy: { id: "asc" } },
-      payments: { orderBy: { id: "asc" }, include: { createdBy: { select: { firstName: true, lastName: true } } } },
+      payments: { orderBy: { id: "asc" }, include: { createdBy: { select: { firstName: true, lastName: true } }, bank: { select: { name: true } } } },
     },
   });
   if (!i) return null;
@@ -377,6 +377,7 @@ export async function loadInvoiceDetail(id: number): Promise<InvoiceDetail | nul
       receivedAmount: p.receivedAmount?.toFixed(2) ?? null,
       changeAmount: p.changeAmount?.toFixed(2) ?? null,
       cardReference: p.cardReference,
+      bank: p.bank?.name ?? null,
       reason: p.reason,
       createdAt: formatDateTime(p.createdAt),
       createdBy: fullName(p.createdBy),

@@ -19,6 +19,7 @@ export async function loadReceipt(paymentId: number): Promise<ReceiptData | null
     where: { id: paymentId },
     include: {
       createdBy: { select: { firstName: true, lastName: true } },
+      bank: { select: { name: true } },
       invoice: {
         include: {
           patient: { select: { firstName: true, lastName: true, personalId: true } },
@@ -64,6 +65,7 @@ export async function loadReceipt(paymentId: number): Promise<ReceiptData | null
     receivedAmount: p.receivedAmount?.toFixed(2) ?? null,
     changeAmount: p.changeAmount?.toFixed(2) ?? null,
     cardReference: p.cardReference,
+    bank: p.bank?.name ?? null,
     reason: p.reason,
     remainingDebt: fromTetri(invoiceDebt(tetri(i.patientAmount), paidSoFar)),
     printCount: p._count.prints,

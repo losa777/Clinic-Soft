@@ -8,7 +8,7 @@ import {
   type BookingDoctor,
   type SpecialtyOption,
 } from "@/lib/appointment-schema";
-import { addDays, type BusyInterval, buildSlots, formatTime, isoWeekday, type Slot, tbilisiToDate } from "@/lib/appointment-slots";
+import { addDays, type BusyInterval, buildSlots, formatTime, isoWeekday, type Slot, tbilisiParts, tbilisiToDate, tbilisiToday } from "@/lib/appointment-slots";
 import { invoicesOfAppointments } from "@/modules/finance/server/invoices";
 
 /**
@@ -177,6 +177,39 @@ export async function loadDayAppointments({
       invoice: invoices.get(a.id) ?? null,
     })),
   };
+}
+
+/**
+ * პაციენტის მომავალი ჯავშნები (დღევანდელის ჩათვლით, გაუქმებულის/დასრულებულის გარეშე) — ქოლ ცენტრი: „როდის მაქვს
+ * ჩაწერა?“, გადატანა, გაუქმება. ინდექსი: idx_appointments_patient (patient_id, start_time).
+ */
+export async function loadPatientUpcoming(patientId: number): Promise<AppointmentRow[]> {
+  const appointments = await prisma.appointment.findMany({
+    where: { patientId, startTime: { gte: tbilisiToDate(tbilisiToday(), 0) }, status: { in: ["booked", "arrived"] } },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true, personalId: true, phone: true } },
+      doctor: { select: { id: true, room: true, user: { select: { firstName: true, lastName: true } }, specialty: { select: { name: true } } } },
+      createdBy: { select: { firstName: true, lastName: true } },
+    },
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
+    take: 20,
+  });
+  const now = Date.now();
+  return appointments.map((a) => ({
+    id: a.id,
+    start: formatTime(a.startTime),
+    end: formatTime(a.endTime),
+    date: tbilisiParts(a.startTime).date,
+    patient: { id: a.patient.id, name: fullName(a.patient), personalId: a.patient.personalId, phone: a.patient.phone },
+    doctor: { id: a.doctor.id, name: fullName(a.doctor.user), specialty: a.doctor.specialty.name, room: a.doctor.room },
+    status: a.status,
+    comment: a.comment,
+    cancelReason: a.cancelReason,
+    createdBy: a.createdBy ? fullName(a.createdBy) : null,
+    isPast: a.startTime.getTime() <= now,
+    source: a.source,
+    invoice: null,
+  }));
 }
 
 /** ექიმების სია ფილტრისთვის (გათიშულიც — ძველი ჯავშნების სანახავად). */

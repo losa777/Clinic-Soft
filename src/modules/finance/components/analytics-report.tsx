@@ -6,6 +6,7 @@ import { formatGel } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { bucketLabel, changePercent } from "@/modules/finance/analytics-format";
 import type { Analytics } from "@/modules/finance/server/analytics";
+import { BankTotals } from "./bank-totals";
 import { Money } from "./invoice-status-badge";
 import { TrendChart } from "./trend-chart";
 
@@ -51,6 +52,10 @@ export function AnalyticsReport({ a }: { a: Analytics }) {
       <p className="text-xs text-muted-foreground">
         ↗/↘ — ცვლილება წინა იმავე ხანგრძლივობის პერიოდთან ({prev}). დარიცხული — ინვოისის თარიღით; მიღებული — გადახდის თარიღით (დაბრუნებების გამოკლებით).
       </p>
+
+      <div className="break-inside-avoid">
+        <BankTotals rows={a.banks} />
+      </div>
 
       <Card className="break-inside-avoid">
         <CardHeader>
