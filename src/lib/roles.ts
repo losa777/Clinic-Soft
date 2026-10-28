@@ -14,6 +14,7 @@ export const SYSTEM_ROLES = {
   warehouse: "საწყობის მენეჯერი",
   it: "IT სპეციალისტი",
   reporting: "ანგარიშგების სპეციალისტი",
+  callcenter: "ქოლ ცენტრი",
 } as const;
 
 export type SystemRoleCode = keyof typeof SYSTEM_ROLES;

@@ -309,7 +309,7 @@ function Summary({ label, value }: { label: string; value: string }) {
 }
 
 /** უახლოესი დღეები ღილაკებად (ექიმის არასამუშაო დღე — გათიშული) და კალენდარი სხვა თარიღისთვის. */
-function DayPicker({
+export function DayPicker({
   today,
   value,
   onChange,

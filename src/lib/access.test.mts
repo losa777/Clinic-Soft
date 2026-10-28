@@ -143,6 +143,14 @@ describe("როლით წვდომა — უფლებები (ნ�
     for (const role of ["doctor", "registrar", "nurse", "accountant", "director"]) assert.equal(can(user(role), "reporting.export"), false, role);
   });
 
+  it("ქოლ ცენტრი — მხოლოდ დაჯავშნა (ჯავშნის მართვა, სამედიცინო და ფინანსური მონაცემები — არა)", () => {
+    const c = user("callcenter");
+    assert.deepEqual(c.permissions, ["appointments.book"]);
+    for (const p of ["appointments.manage", "emr.view", "invoices.view", "invoices.create", "reporting.view"] as const) assert.equal(can(c, p), false, p);
+    assert.equal(routeRedirect("/callcenter", "callcenter"), null);
+    assert.equal(routeRedirect("/registrar", "callcenter"), "/callcenter");
+  });
+
   it("საწყობის მენეჯერი — მხოლოდ საწყობი", () => {
     const w = user("warehouse");
     for (const p of ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"] as const) assert.ok(can(w, p), p);

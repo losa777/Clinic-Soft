@@ -27,6 +27,7 @@ const TEST_USERS: { username: string; firstName: string; lastName: string; role:
   { username: "warehouse", firstName: "ნათია", lastName: "ხარაიშვილი", role: "warehouse" },
   { username: "it", firstName: "ლუკა", lastName: "ნოზაძე", role: "it" },
   { username: "reporting", firstName: "ანა", lastName: "მელაძე", role: "reporting" },
+  { username: "callcenter", firstName: "ქეთი", lastName: "გოგოლაძე", role: "callcenter" },
 ];
 
 const TABLE_OPTIONS = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
@@ -1327,6 +1328,23 @@ async function seedPermissions() {
   console.log(`✔ უფლებები: ${Object.keys(PERMISSIONS).length}${added ? ` (ახალი: ${added}, მიენიჭა ნაგულისხმევ როლებს)` : ""}`);
 }
 
+/**
+ * ახლად შექმნილ სისტემურ როლს — მისი ნაგულისხმევი უფლებები, უკვე არსებულებიც (seedPermissions მხოლოდ ახალ უფლებას
+ * ანიჭებს). არსებული როლის მინიჭებას არ ვეხებით — ადმინის ცვლილებები რჩება.
+ */
+async function grantNewRoleDefaults(roleCodes: string[]) {
+  for (const code of roleCodes) {
+    const codes = (DEFAULT_ROLE_PERMISSIONS as Record<string, string[]>)[code] ?? [];
+    if (!codes.length) continue;
+    const [role, permissions] = await Promise.all([
+      prisma.role.findUniqueOrThrow({ where: { code }, select: { id: true } }),
+      prisma.permission.findMany({ where: { code: { in: codes } }, select: { id: true } }),
+    ]);
+    await prisma.rolePermission.createMany({ data: permissions.map((p) => ({ roleId: role.id, permissionId: p.id })), skipDuplicates: true });
+    console.log(`✔ ახალ როლს „${code}“ მიენიჭა ნაგულისხმევი უფლებები: ${codes.join(", ")}`);
+  }
+}
+
 /** კლინიკის რეკვიზიტები ქვითრისთვის: იწერება მხოლოდ არარსებული გასაღები (შეცვლილი რჩება). */
 async function seedSettings() {
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
@@ -1594,15 +1612,18 @@ async function main() {
   if (hasLegacyVisits) await migrateLegacyVisits();
   await seedSettings();
 
+  const newRoles: string[] = [];
   for (const [code, name] of Object.entries(SYSTEM_ROLES)) {
+    if (!(await prisma.role.findUnique({ where: { code }, select: { id: true } }))) newRoles.push(code);
     // არსებულ როლს სახელს არ ვუცვლით — ადმინს შეიძლება გადაერქმია პანელიდან
     await prisma.$executeRaw`
       INSERT INTO roles (code, name) VALUES (${code}, ${name})
       ON DUPLICATE KEY UPDATE code = code
     `;
   }
-  console.log(`✔ როლები: ${Object.keys(SYSTEM_ROLES).length}`);
+  console.log(`✔ როლები: ${Object.keys(SYSTEM_ROLES).length}${newRoles.length ? ` (ახალი: ${newRoles.join(", ")})` : ""}`);
   await seedPermissions();
+  await grantNewRoleDefaults(newRoles);
   await seedIssueCategories();
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);

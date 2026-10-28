@@ -13,6 +13,8 @@ export const APPOINTMENT_ROUTES = {
   registrar: { booking: "/registrar/booking", list: "/registrar/appointments", finance: FINANCE_ROUTES.registrar },
   // ექიმი: მიმართვა / განმეორებითი ვიზიტი პაციენტის ბარათიდან; სია — ექიმის დღის განრიგი
   doctor: { booking: "/doctor/booking", list: "/doctor", finance: null },
+  // ქოლ ცენტრი: მხოლოდ დაჯავშნა — ცალკე, ზარზე მორგებული გვერდი (src/components/appointments/call-center-booking.tsx)
+  callcenter: { booking: "/callcenter", list: "/callcenter", finance: null },
 } as const satisfies Record<string, { booking: string; list: string; finance: FinanceRoutes | null }>;
 
 export type AppointmentRoutes = (typeof APPOINTMENT_ROUTES)[keyof typeof APPOINTMENT_ROUTES];

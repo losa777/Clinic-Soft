@@ -73,6 +73,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Partial<Record<SystemRoleCode, Permission
   warehouse: ["inventory.view", "inventory.consume", "inventory.receive", "inventory.manage", "inventory.reports"],
   // ჯანდაცვის პორტალზე ატვირთვა: ნაგულისხმევად მხოლოდ საოპერაციო პაციენტები (ყველა — reporting.all_patients, ადმინის მინიჭებით)
   reporting: ["reporting.view", "reporting.export"],
+  // ქოლ ცენტრი: მხოლოდ დაჯავშნა (პაციენტის ძებნა/რეგისტრაცია ჯავშნისთვის, თავისუფალი დრო) — სამედიცინო და ფინანსური მონაცემების გარეშე
+  callcenter: ["appointments.book"],
 };
 
 export function isPermission(code: string): code is PermissionCode {
