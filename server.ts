@@ -75,7 +75,13 @@ async function main() {
   });
 
   const scheme = tls ? "https" : "http";
-  const ready = () => console.log(`> მზადაა: ${scheme}://${hostname ?? "localhost"}:${port} (${dev ? "development" : "production"})`);
+  const ready = () => {
+    console.log(`> მზადაა: ${scheme}://${hostname ?? "localhost"}:${port} (${dev ? "development" : "production"})`);
+    // საცავი (იგივე წესი, რაც src/lib/document-storage.ts documentsRoot — იქაური მოდული server-only-ია, tsx-ში არ იტვირთება)
+    const custom = process.env.DOCUMENTS_DIR?.trim();
+    const storage = path.resolve(custom || path.join(process.cwd(), "storage", "documents"));
+    console.log(`> ფაილების საცავი: ${storage}${custom ? "" : " (DOCUMENTS_DIR ცარიელია — პროექტის საქაღალდე)"}${existsSync(storage) ? "" : " — საქაღალდე ჯერ არ არსებობს"}`);
+  };
   if (!tls) {
     server.listen(port, hostname, ready);
     return;

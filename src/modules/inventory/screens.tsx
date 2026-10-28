@@ -36,6 +36,7 @@ import {
 import { type InventoryRoutes, itemUrl } from "@/modules/inventory/routes";
 import { dateOnly } from "@/modules/inventory/server/db";
 import { loadNormServices } from "@/modules/inventory/server/norms";
+import { loadReceipts } from "@/modules/inventory/server/receipts";
 import { groupCategories, listMovements, loadItem, loadPickerData, loadStock } from "@/modules/inventory/server/stock";
 import { expiryStatus, formatQuantity, fromDecimal, inputQuantity } from "@/modules/inventory/stock";
 import { LiveRefresh } from "@/components/live-refresh";
@@ -220,7 +221,7 @@ export async function ItemScreen({ routes, user, rawId }: { routes: InventoryRou
             </Link>
           )}
         </div>
-        <MovementList rows={movements} itemHref={null} />
+        <MovementList rows={movements} itemHref={null} showCost={showCost} />
       </div>
     </section>
   );
@@ -348,8 +349,164 @@ export async function MovementsScreen({ routes, user, params }: { routes: Invent
           />
         </FilterField>
       </FilterBar>
-      <MovementList rows={result.rows} itemHref={(id) => itemUrl(routes, id)} />
+      <MovementList rows={result.rows} itemHref={(id) => itemUrl(routes, id)} showCost={can(user, "inventory.reports")} />
       <Pager page={result.page} pageCount={result.pageCount} href={(p) => withParams(base, { ...query, page: p })} />
+    </section>
+  );
+}
+
+/** შესყიდვები: ზედნადებები თანხებით, მომწოდებლების მიხედვით (inventory.reports — გვერდი ამოწმებს). */
+export async function ReceiptsScreen({ routes, user, params }: { routes: InventoryRoutes; user: User; params: SearchParams }) {
+  const base = routes.receipts;
+  if (!base) notFound();
+  const period = periodParams(params, 30);
+  const supplierId = positiveInt(params.supplier);
+  const group = groupParam(user, params);
+  const [report, suppliers] = await Promise.all([
+    loadReceipts({ ...period, supplierId, group }),
+    prisma.inventorySupplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+  const query = { from: period.from, to: period.to, supplier: supplierId, group: group === "all" ? null : group };
+  const total = report.totalTetri || 1;
+  return (
+    <section className="flex flex-col gap-4">
+      <LiveRefresh topics={["inventory"]} />
+      <Header title="ზედნადებები" description={`შესყიდვები მიღების თარიღით · ${formatDate(period.from)} — ${formatDate(period.to)}`}>
+        <ExportLink href={withParams("/api/inventory/receipts", query)} />
+      </Header>
+      <FilterBar action={base}>
+        <FilterField label="დან">
+          <DateInput name="from" value={period.from} />
+        </FilterField>
+        <FilterField label="მდე">
+          <DateInput name="to" value={period.to} />
+        </FilterField>
+        <FilterField label="მომწოდებელი">
+          <NativeSelect
+            name="supplier"
+            value={supplierId ? String(supplierId) : ""}
+            options={[{ value: "", label: "ყველა" }, ...suppliers.map((s) => ({ value: String(s.id), label: s.name }))]}
+            className="max-w-64"
+          />
+        </FilterField>
+        {seesGeneral(user) && (
+          <FilterField label="ჯგუფი">
+            <NativeSelect name="group" value={group} options={[...GROUP_FILTERS]} />
+          </FilterField>
+        )}
+      </FilterBar>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="შესყიდვების ჯამი" value={formatGel(report.totalTetri / 100)} />
+        <Stat label="ზედნადები" value={String(report.docs.length)} />
+        <Stat label="ხაზი (პარტია)" value={String(report.lines)} />
+        <Stat label="ფასის გარეშე ხაზი" value={String(report.unpriced)} danger={report.unpriced > 0} />
+      </div>
+      {report.truncated && <p className="text-sm text-amber-700 dark:text-amber-300">ნაჩვენებია მხოლოდ ბოლო ზედნადებები — შეავიწროვეთ პერიოდი.</p>}
+      <p className="text-xs text-muted-foreground">
+        შესყიდვა ხარჯი ჯერ არ არის — საქონელი ნაშთში შედის და ხარჯად ითვლება გახარჯვისას/ჩამოწერისას (ფინანსური ანალიზი). თანხა — მიღებული რაოდენობა × შესყიდვის ფასი.
+      </p>
+
+      {report.bySupplier.length > 0 && (
+        <Card className="break-inside-avoid">
+          <CardHeader>
+            <CardTitle>მომწოდებლების მიხედვით</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>მომწოდებელი</TableHead>
+                  <TableHead className="text-right">ზედნადები</TableHead>
+                  <TableHead className="text-right">თანხა</TableHead>
+                  <TableHead className="hidden w-48 sm:table-cell">წილი</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {report.bySupplier.map((s) => (
+                  <TableRow key={s.supplierId ?? "none"}>
+                    <TableCell className="whitespace-normal">
+                      {s.supplierId ? (
+                        <Link href={withParams(base, { ...query, supplier: s.supplierId })} className="font-medium text-primary hover:underline">
+                          {s.name}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">{s.name}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{s.receipts}</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">{formatGel(s.totalTetri / 100)}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((s.totalTetri / total) * 100)}%` }} />
+                        </div>
+                        <span className="w-9 text-right text-xs text-muted-foreground tabular-nums">{Math.round((s.totalTetri / total) * 100)}%</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {report.docs.length === 0 && <p className="rounded-xl border p-6 text-center text-sm text-muted-foreground">ამ პერიოდში ზედნადები არ არის</p>}
+        {report.docs.map((d) => (
+          <details key={d.id} className="group rounded-xl border print:break-inside-avoid">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+              <span className="w-24 tabular-nums">{formatDate(d.receivedOn)}</span>
+              <span className="min-w-0 flex-1 font-medium">
+                {d.supplier ?? <span className="text-muted-foreground">მომწოდებლის გარეშე</span>}
+                {d.documentNumber && <span className="ml-2 text-sm font-normal text-muted-foreground">№ {d.documentNumber}</span>}
+              </span>
+              <span className="text-sm text-muted-foreground">{d.lines.length} ხაზი</span>
+              {d.unpriced > 0 && <Badge className="bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">ფასის გარეშე: {d.unpriced}</Badge>}
+              <span className="w-28 text-right font-semibold tabular-nums">{formatGel(d.totalTetri / 100)}</span>
+            </summary>
+            <div className="flex flex-col gap-2 border-t px-4 py-3">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>დასახელება</TableHead>
+                      <TableHead className="text-right">რაოდენობა</TableHead>
+                      <TableHead className="text-right">ერთ. ფასი</TableHead>
+                      <TableHead className="text-right">თანხა</TableHead>
+                      <TableHead className="hidden md:table-cell">სერია / ვადა</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {d.lines.map((l) => (
+                      <TableRow key={l.batchId}>
+                        <TableCell className="whitespace-normal">
+                          <Link href={itemUrl(routes, l.itemId)} className="text-primary hover:underline">
+                            {l.itemName}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums whitespace-nowrap">
+                          {formatQuantity(l.quantity)} <span className="text-xs text-muted-foreground">{l.unit}</span>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{l.unitCost ? formatGel(l.unitCost) : "—"}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">{l.amountTetri === null ? "—" : formatGel(l.amountTetri / 100)}</TableCell>
+                        <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
+                          {[l.lotNumber, l.expiryDate && formatDate(l.expiryDate)].filter(Boolean).join(" · ") || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                შეიყვანა: {d.createdBy ?? "—"} · {d.createdAt}
+                {d.note && ` · ${d.note}`}
+              </p>
+            </div>
+          </details>
+        ))}
+      </div>
     </section>
   );
 }

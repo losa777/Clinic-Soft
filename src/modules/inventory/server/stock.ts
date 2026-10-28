@@ -122,6 +122,10 @@ export type MovementRow = {
   recipient: string | null;
   lotNumber: string | null;
   expiryDate: string | null;
+  /** პარტიის შესყიდვის ფასი (null — ფასის გარეშე მიღებული) */
+  unitCost: string | null;
+  /** თანხა თეთრებში, ნიშნით (რაოდენობა × ფასი; null — ფასი არ არის) */
+  amountTetri: number | null;
   documentNumber: string | null;
   supplier: string | null;
   patient: string | null;
@@ -130,7 +134,7 @@ export type MovementRow = {
 
 const movementInclude = {
   item: { select: { name: true, unit: true } },
-  batch: { select: { lotNumber: true, expiryDate: true } },
+  batch: { select: { lotNumber: true, expiryDate: true, unitCost: true } },
   receipt: { select: { documentNumber: true, supplier: { select: { name: true } } } },
   patient: { select: { firstName: true, lastName: true } },
   createdBy: { select: { firstName: true, lastName: true } },
@@ -152,6 +156,9 @@ function toMovementRow(m: MovementWithRelations): MovementRow {
     recipient: m.recipient,
     lotNumber: m.batch.lotNumber,
     expiryDate: dateOnly(m.batch.expiryDate),
+    unitCost: m.batch.unitCost?.toFixed(2) ?? null,
+    // DECIMAL(12,2) × DECIMAL(12,2) → თეთრამდე მრგვალდება
+    amountTetri: m.batch.unitCost ? Math.round(m.quantity.mul(m.batch.unitCost).toNumber() * 100) : null,
     documentNumber: m.receipt?.documentNumber ?? null,
     supplier: m.receipt?.supplier?.name ?? null,
     patient: fullName(m.patient),

@@ -12,7 +12,15 @@ type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
  * ზარები ბრაუზერში (1:1, ხმა): სიგნალი — ჩატის სოკეტით (realtime/calls.ts), ხმა — WebRTC, პირდაპირ კომპიუტერებს შორის.
  * კლინიკის ქსელში STUN/TURN არ სჭირდება (ICE — ლოკალური მისამართები). მიკროფონი მხოლოდ https-ზე (ან localhost) მუშაობს.
  *
- * phase: idle → outgoing (რეკავს) / incoming (ურეკავენ) → connecting (უპასუხეს, კავშირი მყარდება) → active → idle.
+ * phase: idle → outgoing (ირეკება) / incoming (ურეკავენ) → connecting (უპასუხეს, კავშირი მყარდება) → active → idle.
+ *
+ * საიმედოობა:
+ * - offer-ს მხოლოდ დამრეკი აგზავნის (glare არ არის); პასუხის გამცემი RTCPeerConnection-ს ქმნის პასუხამდე —
+ *   ადრე მოსული სიგნალი არ იკარგება; სიგნალები მუშავდება რიგით (ერთდროული setRemoteDescription არ ხდება).
+ * - ცალკეული ICE კანდიდატის შეცდომა (IPv6, ვირტუალური ქსელის ბარათი) ზარს აღარ წყვეტს.
+ * - კავშირი ვერ დამყარდა / გაწყდა / ხმა არ მოდის → ICE restart (გზის ხელახლა ძებნა, MAX_RESTARTS-მდე), შემდეგ — გათიშვა.
+ * - ბრაუზერმა ხმის დაკვრა დაბლოკა (autoplay) — ზარის ფანჯარაში ღილაკი „ხმის ჩართვა“, ან ეკრანზე პირველი დაჭერა.
+ * - დიაგნოსტიკა: ბრაუზერის კონსოლში (F12) „[ზარი]“ ჩანაწერები.
  */
 
 export type CallPhase = "idle" | "outgoing" | "incoming" | "connecting" | "active";
@@ -24,13 +32,25 @@ export type CallState = {
   muted: boolean;
   /** საუბრის დაწყება (active) — ტაიმერისთვის */
   startedAt: number | null;
+  /** კავშირი აღდგება (ICE restart) */
+  reconnecting: boolean;
+  /** ბრაუზერმა თანამოსაუბრის ხმის დაკვრა დაბლოკა — საჭიროა დაჭერა */
+  audioBlocked: boolean;
 };
 
-const IDLE: CallState = { phase: "idle", callId: null, peer: null, muted: false, startedAt: null };
+const IDLE: CallState = { phase: "idle", callId: null, peer: null, muted: false, startedAt: null, reconnecting: false, audioBlocked: false };
 
-/** პასუხის შემდეგ ხმის კავშირი ამ დროში უნდა დამყარდეს. */
-const CONNECT_TIMEOUT_MS = 20_000;
+/** ერთი მცდელობა (პირველი ან ICE restart) — ამ დროში უნდა დამყარდეს. */
+const ATTEMPT_TIMEOUT_MS = 12_000;
+/** გზის ხელახლა ძებნა ერთ ზარზე მაქსიმუმ. */
+const MAX_RESTARTS = 3;
+/** „disconnected“ ხშირად თავისით გადის — ამდენ ხანს ველოდებით restart-მდე. */
+const DISCONNECTED_GRACE_MS = 3_000;
+/** ხმის შემოწმება: შემომავალი ბაიტები ამდენ ხანს თუ არ იზრდება — restart. */
+const AUDIO_CHECK_MS = 2_000;
+const AUDIO_STALL_MS = 5_000;
 const ACK_TIMEOUT_MS = 10_000;
+const MIC: MediaStreamConstraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
 
 const END_TEXT: Record<CallEndReason, string | null> = {
   declined: "ზარი უარყოფილია",
@@ -42,6 +62,8 @@ const END_TEXT: Record<CallEndReason, string | null> = {
   elsewhere: null,
 };
 
+const log = (...args: unknown[]) => console.info("[ზარი]", ...args);
+
 function microphoneError(error: unknown): string {
   const name = error instanceof DOMException ? error.name : "";
   if (name === "NotAllowedError" || name === "SecurityError") return "მიკროფონზე წვდომა არ არის — ბრაუზერის მისამართის ზოლში დაუშვით მიკროფონი";
@@ -50,16 +72,34 @@ function microphoneError(error: unknown): string {
   return "მიკროფონი ვერ ჩაირთო";
 }
 
+/** კანდიდატის ტიპი და მისამართი ლოგისთვის: „host 10.1.10.23 udp“. */
+function describeCandidate(candidate: string): string {
+  const p = candidate.split(" ");
+  return `${p[7] ?? "?"} ${p[4] ?? "?"} ${p[2] ?? ""}`.trim();
+}
+
 export class CallController {
   readonly store = new Store<CallState>(IDLE);
   private socket: ChatSocket | null = null;
   private stream: MediaStream | null = null;
   private pc: RTCPeerConnection | null = null;
+  /** ზარის რომელ მხარეს ვართ — offer-ს და restart-ს დამრეკი აგზავნის */
+  private isCaller = false;
   /** ICE კანდიდატები remote description-მდე */
   private pendingCandidates: RTCIceCandidateInit[] = [];
+  /** სიგნალები RTCPeerConnection-მდე (დაცვა თანმიმდევრობის დარღვევისგან) */
+  private earlySignals: CallSignal[] = [];
+  /** სიგნალების რიგი — ერთი მეორის მერე */
+  private signalChain: Promise<void> = Promise.resolve();
   private remoteAudio: HTMLAudioElement | null = null;
   private stopRing: (() => void) | null = null;
-  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private attemptTimer: ReturnType<typeof setTimeout> | null = null;
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private audioTimer: ReturnType<typeof setInterval> | null = null;
+  private restarts = 0;
+  private lastBytes = 0;
+  private lastBytesAt = 0;
+  private unlockAudio: (() => void) | null = null;
 
   private get state() {
     return this.store.getState();
@@ -79,7 +119,10 @@ export class CallController {
     this.socket = socket;
     const onIncoming: ServerToClientEvents["call:incoming"] = (e) => void this.incoming(e.callId, e.from);
     const onAccepted: ServerToClientEvents["call:accepted"] = (e) => e.callId === this.state.callId && void this.accepted();
-    const onSignal: ServerToClientEvents["call:signal"] = (e) => e.callId === this.state.callId && void this.receiveSignal(e.signal);
+    const onSignal: ServerToClientEvents["call:signal"] = (e) => {
+      if (e.callId !== this.state.callId) return;
+      this.signalChain = this.signalChain.then(() => this.receiveSignal(e.signal));
+    };
     const onEnded: ServerToClientEvents["call:ended"] = (e) => e.callId === this.state.callId && this.ended(e.reason);
     // სოკეტი გაწყდა — სერვერი ზარს ასრულებს; აქაც ვასუფთავებთ
     const onDisconnect = () => this.state.phase !== "idle" && this.ended("disconnected");
@@ -116,10 +159,11 @@ export class CallController {
       return;
     }
     const callId = randomId();
-    // ჯერ მდგომარეობა (ღილაკი მაშინვე „რეკავს“), შემდეგ მიკროფონი
+    // ჯერ მდგომარეობა (ღილაკი მაშინვე „ირეკება“), შემდეგ მიკროფონი
     this.set({ ...IDLE, phase: "outgoing", callId, peer });
+    this.isCaller = true;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      this.stream = await navigator.mediaDevices.getUserMedia(MIC);
     } catch (error) {
       this.cleanup();
       toast.error(microphoneError(error));
@@ -137,6 +181,7 @@ export class CallController {
       toast.error(result.error);
       return;
     }
+    log("ირეკება", fullName(peer));
     this.stopRing = startRingtone("outgoing");
   }
 
@@ -146,7 +191,7 @@ export class CallController {
     if (phase !== "incoming" || !callId || !socket) return;
     this.stopRinging();
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      this.stream = await navigator.mediaDevices.getUserMedia(MIC);
     } catch (error) {
       socket.emit("call:decline", { callId });
       this.cleanup();
@@ -154,6 +199,10 @@ export class CallController {
       return;
     }
     if (this.state.callId !== callId) return this.releaseMedia();
+    this.isCaller = false;
+    this.set({ phase: "connecting" });
+    // RTCPeerConnection — პასუხამდე: დამრეკის offer შეიძლება ძალიან სწრაფად მოვიდეს
+    this.createPeer();
     const result = await this.ack((done) => socket.timeout(ACK_TIMEOUT_MS).emit("call:accept", { callId }, done));
     if (this.state.callId !== callId) return;
     if (!result.ok) {
@@ -161,9 +210,7 @@ export class CallController {
       toast.error(result.error);
       return;
     }
-    this.set({ phase: "connecting" });
-    // offer-ს დამრეკი აგზავნის — აქ მხოლოდ კავშირის მომზადება
-    this.createPeer();
+    log("უპასუხა — ველოდებით დამრეკის offer-ს");
   }
 
   decline() {
@@ -187,6 +234,11 @@ export class CallController {
     this.set({ muted });
   }
 
+  /** „ხმის ჩართვა“ — ბრაუზერმა დაკვრა დაბლოკა, მომხმარებლის დაჭერით ვცდით თავიდან. */
+  resumeAudio() {
+    void this.playRemote();
+  }
+
   // ─── სერვერის მოვლენები ───
 
   private async incoming(callId: string, from: UserRef) {
@@ -205,69 +257,225 @@ export class CallController {
   private async accepted() {
     this.stopRinging();
     this.set({ phase: "connecting" });
-    const pc = this.createPeer();
+    this.createPeer();
+    log("უპასუხეს — offer");
+    await this.sendOffer(false);
+  }
+
+  private async sendOffer(iceRestart: boolean) {
+    const pc = this.pc;
+    if (!pc) return;
     try {
-      await pc.setLocalDescription(await pc.createOffer());
+      await pc.setLocalDescription(await pc.createOffer({ iceRestart }));
       this.sendSignal({ type: "offer", sdp: pc.localDescription?.sdp ?? "" });
-    } catch {
+    } catch (error) {
+      log("offer ვერ შეიქმნა", error);
       this.fail("ხმის კავშირი ვერ მომზადდა");
     }
   }
 
   private async receiveSignal(signal: CallSignal) {
     const pc = this.pc;
-    if (!pc) return;
-    try {
-      if (signal.type === "candidate") {
-        if (pc.remoteDescription) await pc.addIceCandidate(signal.candidate);
-        else this.pendingCandidates.push(signal.candidate);
+    if (!pc) {
+      this.earlySignals.push(signal);
+      return;
+    }
+    if (signal.type === "restart") {
+      // მეორე მხარეს ხმა არ მოდის / კავშირი გაწყდა — გზას დამრეკი ეძებს ხელახლა
+      if (this.isCaller) this.restart("მეორე მხარის მოთხოვნით");
+      return;
+    }
+    if (signal.type === "candidate") {
+      if (!pc.remoteDescription) {
+        this.pendingCandidates.push(signal.candidate);
         return;
       }
+      await this.addCandidate(pc, signal.candidate);
+      return;
+    }
+    try {
       await pc.setRemoteDescription({ type: signal.type, sdp: signal.sdp });
-      for (const c of this.pendingCandidates.splice(0)) await pc.addIceCandidate(c);
+      for (const c of this.pendingCandidates.splice(0)) await this.addCandidate(pc, c);
       if (signal.type === "offer") {
         await pc.setLocalDescription(await pc.createAnswer());
         this.sendSignal({ type: "answer", sdp: pc.localDescription?.sdp ?? "" });
       }
-    } catch {
+    } catch (error) {
+      log(`${signal.type} ვერ დამუშავდა`, error);
       this.fail("ხმის კავშირი ვერ დამყარდა");
+    }
+  }
+
+  /** ცალკეული კანდიდატის შეცდომა ზარს არ წყვეტს — დანარჩენი გზები მაინც მოწმდება. */
+  private async addCandidate(pc: RTCPeerConnection, candidate: RTCIceCandidateInit) {
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (error) {
+      log("კანდიდატი გამოტოვდა", describeCandidate(candidate.candidate ?? ""), error instanceof Error ? error.message : error);
     }
   }
 
   private ended(reason: CallEndReason) {
     const text = END_TEXT[reason];
+    log("დასრულდა:", reason);
     this.cleanup();
     if (text) toast(text);
   }
 
   // ─── WebRTC ───
 
-  private createPeer(): RTCPeerConnection {
+  private createPeer() {
     const pc = new RTCPeerConnection({ iceServers: [] });
     this.pc = pc;
+    this.restarts = 0;
     for (const track of this.stream?.getTracks() ?? []) pc.addTrack(track, this.stream!);
     pc.onicecandidate = (e) => {
       if (!e.candidate) return;
       const { candidate, sdpMid, sdpMLineIndex } = e.candidate.toJSON();
-      if (candidate) this.sendSignal({ type: "candidate", candidate: { candidate, sdpMid: sdpMid ?? null, sdpMLineIndex: sdpMLineIndex ?? null } });
+      if (!candidate) return;
+      log("ჩემი კანდიდატი:", describeCandidate(candidate));
+      this.sendSignal({ type: "candidate", candidate: { candidate, sdpMid: sdpMid ?? null, sdpMLineIndex: sdpMLineIndex ?? null } });
     };
     pc.ontrack = (e) => {
-      this.remoteAudio ??= new Audio();
-      this.remoteAudio.autoplay = true;
+      if (!this.remoteAudio) {
+        // DOM-ში (დამალული) — ზოგ ბრაუზერში DOM-ის გარეშე დაკვრა არასტაბილურია
+        this.remoteAudio = document.createElement("audio");
+        this.remoteAudio.autoplay = true;
+        this.remoteAudio.hidden = true;
+        document.body.append(this.remoteAudio);
+      }
       this.remoteAudio.srcObject = e.streams[0] ?? new MediaStream([e.track]);
-      void this.remoteAudio.play().catch(() => null);
+      void this.playRemote();
     };
+    pc.oniceconnectionstatechange = () => log("ICE:", pc.iceConnectionState);
     pc.onconnectionstatechange = () => {
       if (this.pc !== pc) return;
-      if (pc.connectionState === "connected" && this.state.phase !== "active") {
-        this.clearConnectTimer();
-        this.set({ phase: "active", startedAt: Date.now() });
-      } else if (pc.connectionState === "failed") {
-        this.fail("ხმის კავშირი ვერ დამყარდა — შეამოწმეთ ქსელი");
+      const state = pc.connectionState;
+      log("კავშირი:", state);
+      if (state === "connected") {
+        this.clearTimer("attempt");
+        this.clearTimer("disconnect");
+        void this.logSelectedPair(pc);
+        if (this.state.phase !== "active") {
+          this.set({ phase: "active", startedAt: Date.now(), reconnecting: false });
+          this.startAudioWatch(pc);
+        } else {
+          this.set({ reconnecting: false });
+        }
+      } else if (state === "failed") {
+        this.recover("კავშირი ვერ დამყარდა");
+      } else if (state === "disconnected") {
+        this.clearTimer("disconnect");
+        this.disconnectTimer = setTimeout(() => pc.connectionState === "disconnected" && this.recover("კავშირი გაწყდა"), DISCONNECTED_GRACE_MS);
       }
     };
-    this.connectTimer = setTimeout(() => this.state.phase === "connecting" && this.fail("ხმის კავშირი ვერ დამყარდა — შეამოწმეთ ქსელი"), CONNECT_TIMEOUT_MS);
-    return pc;
+    this.armAttemptTimer();
+    for (const s of this.earlySignals.splice(0)) this.signalChain = this.signalChain.then(() => this.receiveSignal(s));
+  }
+
+  /** ერთი მცდელობის ვადა — შემდეგ restart (ან გათიშვა, თუ მცდელობები ამოიწურა). */
+  private armAttemptTimer() {
+    this.clearTimer("attempt");
+    this.attemptTimer = setTimeout(() => {
+      if (this.state.phase === "connecting" || this.state.reconnecting) this.recover("კავშირი დიდხანს ვერ დამყარდა");
+    }, ATTEMPT_TIMEOUT_MS);
+  }
+
+  /** კავშირის პრობლემა: დამრეკი თავად ეძებს გზას ხელახლა, პასუხის გამცემი სთხოვს დამრეკს. */
+  private recover(why: string) {
+    if (this.state.phase === "idle") return;
+    if (this.restarts >= MAX_RESTARTS) {
+      log(why, "— მცდელობები ამოიწურა");
+      this.fail("ხმის კავშირი ვერ დამყარდა — შეამოწმეთ ქსელი");
+      return;
+    }
+    if (this.isCaller) this.restart(why);
+    else {
+      this.restarts++;
+      log(why, "— ვთხოვთ დამრეკს ხელახლა ცდას");
+      this.set({ reconnecting: this.state.phase === "active" });
+      this.sendSignal({ type: "restart" });
+      this.armAttemptTimer();
+    }
+  }
+
+  /** ICE restart: ახალი offer ახალი ICE პარამეტრებით — ბრაუზერი ყველა გზას თავიდან ამოწმებს. */
+  private restart(why: string) {
+    const pc = this.pc;
+    if (!pc || this.state.phase === "idle") return;
+    if (this.restarts >= MAX_RESTARTS) return this.recover(why);
+    this.restarts++;
+    log(`${why} — გზის ხელახლა ძებნა (${this.restarts}/${MAX_RESTARTS})`);
+    this.set({ reconnecting: this.state.phase === "active" });
+    this.lastBytesAt = Date.now();
+    this.armAttemptTimer();
+    void this.sendOffer(true);
+  }
+
+  /** ხმა მოდის? შემომავალი ბაიტები არ იზრდება — restart; ელემენტი გაჩერდა — დაკვრა თავიდან. */
+  private startAudioWatch(pc: RTCPeerConnection) {
+    this.clearTimer("audio");
+    this.lastBytes = 0;
+    this.lastBytesAt = Date.now();
+    this.audioTimer = setInterval(async () => {
+      if (this.pc !== pc || pc.connectionState !== "connected") return;
+      let bytes = 0;
+      try {
+        (await pc.getStats()).forEach((r) => {
+          if (r.type === "inbound-rtp" && r.kind === "audio") bytes += r.bytesReceived ?? 0;
+        });
+      } catch {
+        return;
+      }
+      const now = Date.now();
+      if (bytes > this.lastBytes) {
+        this.lastBytes = bytes;
+        this.lastBytesAt = now;
+        if (this.remoteAudio?.paused && !this.state.audioBlocked) void this.playRemote();
+      } else if (now - this.lastBytesAt > AUDIO_STALL_MS) {
+        this.lastBytesAt = now;
+        this.recover("თანამოსაუბრის ხმა არ მოდის");
+      }
+    }, AUDIO_CHECK_MS);
+  }
+
+  private async playRemote() {
+    const audio = this.remoteAudio;
+    if (!audio) return;
+    try {
+      await audio.play();
+      if (this.state.audioBlocked) this.set({ audioBlocked: false });
+      this.unlockAudio?.();
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== "NotAllowedError" || this.remoteAudio !== audio) return;
+      log("ბრაუზერმა ხმის დაკვრა დაბლოკა — საჭიროა დაჭერა");
+      this.set({ audioBlocked: true });
+      if (!this.unlockAudio) {
+        // ეკრანზე ნებისმიერი დაჭერა/კლავიში — ხმა ირთვება
+        const retry = () => void this.playRemote();
+        window.addEventListener("pointerdown", retry, true);
+        window.addEventListener("keydown", retry, true);
+        this.unlockAudio = () => {
+          window.removeEventListener("pointerdown", retry, true);
+          window.removeEventListener("keydown", retry, true);
+          this.unlockAudio = null;
+        };
+      }
+    }
+  }
+
+  private async logSelectedPair(pc: RTCPeerConnection) {
+    try {
+      const stats = await pc.getStats();
+      stats.forEach((r) => {
+        if (r.type !== "candidate-pair" || !r.nominated || r.state !== "succeeded") return;
+        const local = stats.get(r.localCandidateId);
+        const remote = stats.get(r.remoteCandidateId);
+        log("გზა:", `${local?.candidateType} ${local?.address}:${local?.port}`, "→", `${remote?.candidateType} ${remote?.address}:${remote?.port}`, local?.protocol);
+      });
+    } catch {
+      // მხოლოდ დიაგნოსტიკა
+    }
   }
 
   private sendSignal(signal: CallSignal) {
@@ -291,9 +499,13 @@ export class CallController {
     this.stopRing = null;
   }
 
-  private clearConnectTimer() {
-    if (this.connectTimer) clearTimeout(this.connectTimer);
-    this.connectTimer = null;
+  private clearTimer(which: "attempt" | "disconnect" | "audio") {
+    if (which === "attempt" && this.attemptTimer) clearTimeout(this.attemptTimer);
+    if (which === "disconnect" && this.disconnectTimer) clearTimeout(this.disconnectTimer);
+    if (which === "audio" && this.audioTimer) clearInterval(this.audioTimer);
+    if (which === "attempt") this.attemptTimer = null;
+    if (which === "disconnect") this.disconnectTimer = null;
+    if (which === "audio") this.audioTimer = null;
   }
 
   private releaseMedia() {
@@ -303,13 +515,20 @@ export class CallController {
 
   private cleanup() {
     this.stopRinging();
-    this.clearConnectTimer();
+    this.clearTimer("attempt");
+    this.clearTimer("disconnect");
+    this.clearTimer("audio");
+    this.unlockAudio?.();
     this.pc?.close();
     this.pc = null;
     this.pendingCandidates = [];
+    this.earlySignals = [];
+    this.signalChain = Promise.resolve();
+    this.restarts = 0;
     this.releaseMedia();
     if (this.remoteAudio) {
       this.remoteAudio.srcObject = null;
+      this.remoteAudio.remove();
       this.remoteAudio = null;
     }
     this.store.set(() => IDLE);

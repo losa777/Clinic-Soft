@@ -33,9 +33,16 @@ export function AnalyticsReport({ a }: { a: Analytics }) {
         <Kpi label="დაბრუნებები" value={formatGel(c.refunds)} change={changePercent(c.refunds, p.refunds)} invert />
         <Kpi label="პაციენტის წილი" value={formatGel(c.patient)} change={changePercent(c.patient, p.patient)} />
       </div>
-      {/* საწყობის ხარჯი (inventory.reports): სამედიცინო და სამეურნეო — ცალ-ცალკე, შესყიდვის ფასით */}
+      {/* საწყობი (inventory.reports): შესყიდვა (ზედნადებები) და ხარჯი — სამედიცინო და სამეურნეო ცალ-ცალკე, შესყიდვის ფასით */}
       {c.materials !== null && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Kpi
+            label="შესყიდვები (საწყობში მიღება)"
+            value={formatGel(c.purchases ?? 0)}
+            change={changePercent(c.purchases ?? 0, p.purchases ?? 0)}
+            hint={`${c.receipts} ზედნადები${c.unpricedLines ? ` · ფასის გარეშე ხაზი: ${c.unpricedLines}` : ""} · ხარჯად ითვლება გახარჯვისას`}
+            invert
+          />
           <Kpi label="სამედიცინო მასალის ხარჯი" value={formatGel(c.materials)} change={changePercent(c.materials, p.materials ?? 0)} hint="გახარჯვა პაციენტზე/პროცედურაზე, შესყიდვის ფასით" invert />
           <Kpi label="სამეურნეო და საკანცელარიო" value={formatGel(c.supplies ?? 0)} change={changePercent(c.supplies ?? 0, p.supplies ?? 0)} hint="განყოფილებებზე გაცემა, შესყიდვის ფასით" invert />
           <Kpi label="ჩამოწერის ზარალი" value={formatGel(c.writeoffs ?? 0)} change={changePercent(c.writeoffs ?? 0, p.writeoffs ?? 0)} hint="ვადაგასული, დაზიანებული, დაკარგული" invert />

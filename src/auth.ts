@@ -28,7 +28,9 @@ const ROLE_WITH_PERMISSIONS = { include: { permissions: { select: { permission: 
 
 /**
  * სესიაში შესანახი ველები ბაზის ჩანაწერიდან. roles — მთავარი როლი პირველია, შემდეგ დამატებითები;
- * roleCode/roleName — აქტიური (ბოლოს არჩეული) როლი; უფლებები — ყველა როლის ერთად.
+ * roleCode/roleName — აქტიური (ბოლოს არჩეული) როლი; უფლებები — მხოლოდ აქტიური როლისა (ადმინზე — ყველა).
+ * როლი იცვლება სხვა როლის განყოფილებაში გადასვლისას (proxy.ts), ამიტომ ბუღალტრად მყოფი ხედავს ზუსტად
+ * იმას, რასაც ბუღალტერი — სხვა როლების უფლებები არ ემატება.
  */
 async function loadSessionUser(where: { id: number } | { username: string }) {
   const user = await prisma.user.findUnique({
@@ -51,9 +53,7 @@ async function loadSessionUser(where: { id: number } | { username: string }) {
       // პაროლის შეცვლისას იზრდება — ძველი სესიები უქმდება (jwt callback)
       sv: user.sessionVersion,
       // ადმინს ყველა უფლება აქვს (ბაზის მინიჭების მიუხედავად)
-      permissions: roles.some((r) => r.code === FULL_ACCESS_ROLE)
-        ? ALL_PERMISSIONS
-        : [...new Set(roles.flatMap((r) => r.permissions.map((p) => p.permission.code)))],
+      permissions: active.code === FULL_ACCESS_ROLE ? ALL_PERMISSIONS : active.permissions.map((p) => p.permission.code),
     },
   };
 }

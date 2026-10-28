@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const rows = await exportMovements({ ...period, type, itemId: positiveInt(params.item), group, page: 1 });
   return csvResponse(
     `inventory-movements-${period.from}-${period.to}.csv`,
-    ["დრო", "დასახელება", "ოპერაცია", "რაოდენობა", "ერთეული", "სერია", "ვადა", "მიზეზი", "მომწოდებელი", "ზედნადები", "პაციენტი", "ვის/სად გაიცა", "შენიშვნა", "თანამშრომელი"],
+    ["დრო", "დასახელება", "ოპერაცია", "რაოდენობა", "ერთეული", "სერია", "ვადა", "ერთ. ფასი (₾)", "თანხა (₾)", "მიზეზი", "მომწოდებელი", "ზედნადები", "პაციენტი", "ვის/სად გაიცა", "შენიშვნა", "თანამშრომელი"],
     rows.map((m) => [
       m.at,
       m.itemName,
@@ -24,6 +24,9 @@ export async function GET(request: Request) {
       m.unit,
       m.lotNumber,
       m.expiryDate,
+      m.unitCost,
+      // ნიშნით, როგორც რაოდენობა (+ შემოსავალი, − გასავალი)
+      m.amountTetri === null ? null : (m.amountTetri / 100).toFixed(2),
       m.reason ? REASON_LABELS[m.reason] : null,
       m.supplier,
       m.documentNumber,

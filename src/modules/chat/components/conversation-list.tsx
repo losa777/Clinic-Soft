@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue, useMinuteClock } from "@/modules/chat/client/hooks";
 import { useChat, useChatClient } from "@/modules/chat/client/provider";
+import { CallButton } from "@/modules/chat/components/call-panel";
 import { ContactRow } from "@/modules/chat/components/contact-row";
 import { NewGroupDialog } from "@/modules/chat/components/group-dialogs";
 import { GroupAvatar, UserAvatar } from "@/modules/chat/components/presence";
@@ -242,17 +243,17 @@ function ConversationRow({
       : "შეტყობინებები ჯერ არ არის";
   const unread = c.unread > 0;
 
+  // პირად საუბარში — დარეკვის ღილაკი სტრიქონის ბოლოს (სტრიქონის ღილაკის გვერდით, არა შიგნით)
+  const callable = c.type === "direct" && c.peer?.isActive ? c.peer : null;
+
   return (
-    <li>
+    <li className={cn("flex items-center rounded-lg hover:bg-muted", selected && "bg-accent hover:bg-accent", callable && "pr-1")}>
       <button
         type="button"
         onClick={() => onSelect(c.id)}
         aria-current={selected ? "true" : undefined}
         aria-label={`${c.name}${unread ? `, ${c.unread} წაუკითხავი` : ""}`}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-          selected && "bg-accent hover:bg-accent",
-        )}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {c.type === "group" ? <GroupAvatar /> : c.peer ? <UserAvatar user={c.peer} /> : <GroupAvatar />}
         <span className="min-w-0 flex-1">
@@ -283,6 +284,7 @@ function ConversationRow({
           </span>
         </span>
       </button>
+      {callable && <CallButton user={callable} className="size-8 shrink-0" />}
     </li>
   );
 }

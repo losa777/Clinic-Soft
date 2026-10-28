@@ -45,11 +45,13 @@ describe("ზარები — სიგნალის სერვერი"
     calls.signal(2, "b1", { callId: CALL, signal: { type: "answer", sdp: "x" } }); // არამიბმული ტაბი — იგნორი
     calls.signal(2, "b2", { callId: CALL, signal: { type: "answer", sdp: "v=0" } });
     calls.signal(2, "b2", { callId: CALL, signal: { type: "bogus" } });
+    calls.signal(2, "b2", { callId: CALL, signal: { type: "restart" } });
     assert.deepEqual(
       sent.filter((s) => s.event === "call:signal").map((s) => [s.to, (s.payload.signal as { type: string }).type]),
       [
         ["b2", "offer"],
         ["a1", "answer"],
+        ["a1", "restart"],
       ],
     );
 

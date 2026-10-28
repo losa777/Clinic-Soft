@@ -35,7 +35,7 @@ const rememberRole = cache(async (userId: number, code: string) => {
 
 /**
  * მომხმარებელი მოცემული როლით (მთავარი ან დამატებითი); სხვა როლი თავის გვერდზე გადადის.
- * რამდენიმე როლის მომხმარებელს ეს როლი აქტიური ხდება (ზედა პანელი, აუდიტი, შემდეგი შესვლა).
+ * როლს რენდერამდე proxy.ts ააქტიურებს (უფლებებიც ამ როლისაა); აქ — სათადარიგოდ (ზედა პანელი, აუდიტი, შემდეგი შესვლა).
  */
 export async function requireRole(roleCode: string) {
   const user = await requireAnyRole(roleCode);

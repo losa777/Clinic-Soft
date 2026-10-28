@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate } from "@/lib/appointment-slots";
+import { formatGel } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { MOVEMENT_LABELS, REASON_LABELS } from "@/modules/inventory/labels";
 import type { MovementRow } from "@/modules/inventory/server/stock";
@@ -25,8 +26,11 @@ function details(m: MovementRow) {
   return parts.filter(Boolean).join(" · ");
 }
 
-/** მოძრაობების ჟურნალი. itemHref — დასახელების ბარათის ბმული (null — დასახელების სვეტი არ ჩანს, ბარათზე). */
-export function MovementList({ rows, itemHref }: { rows: MovementRow[]; itemHref: ((id: number) => string) | null }) {
+/**
+ * მოძრაობების ჟურნალი. itemHref — დასახელების ბარათის ბმული (null — დასახელების სვეტი არ ჩანს, ბარათზე).
+ * showCost — თანხა შესყიდვის ფასით (inventory.reports).
+ */
+export function MovementList({ rows, itemHref, showCost = false }: { rows: MovementRow[]; itemHref: ((id: number) => string) | null; showCost?: boolean }) {
   return (
     <div className="overflow-x-auto rounded-xl border">
       <Table>
@@ -36,6 +40,7 @@ export function MovementList({ rows, itemHref }: { rows: MovementRow[]; itemHref
             {itemHref && <TableHead className="h-10">დასახელება</TableHead>}
             <TableHead className="h-10">ოპერაცია</TableHead>
             <TableHead className="h-10 text-right">რაოდენობა</TableHead>
+            {showCost && <TableHead className="h-10 text-right">თანხა</TableHead>}
             <TableHead className="hidden h-10 md:table-cell">პარტია</TableHead>
             <TableHead className="hidden h-10 lg:table-cell">დეტალები</TableHead>
             <TableHead className="hidden h-10 sm:table-cell">თანამშრომელი</TableHead>
@@ -44,7 +49,7 @@ export function MovementList({ rows, itemHref }: { rows: MovementRow[]; itemHref
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="h-20 text-center text-muted-foreground">
+              <TableCell colSpan={8} className="h-20 text-center text-muted-foreground">
                 მოძრაობა არ არის
               </TableCell>
             </TableRow>
@@ -66,6 +71,20 @@ export function MovementList({ rows, itemHref }: { rows: MovementRow[]; itemHref
                 {m.quantity > 0 ? "+" : ""}
                 {formatQuantity(m.quantity)} <span className="text-xs font-normal text-muted-foreground">{m.unit}</span>
               </TableCell>
+              {showCost && (
+                <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  {m.amountTetri === null ? (
+                    <span className="text-xs text-muted-foreground">ფასი არ არის</span>
+                  ) : (
+                    <>
+                      <span className={cn(m.type === "receipt" && "font-medium")}>{formatGel(Math.abs(m.amountTetri) / 100)}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {formatGel(m.unitCost ?? 0)} / {m.unit}
+                      </span>
+                    </>
+                  )}
+                </TableCell>
+              )}
               <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
                 {[m.lotNumber, m.expiryDate && formatDate(m.expiryDate)].filter(Boolean).join(" · ") || "—"}
               </TableCell>

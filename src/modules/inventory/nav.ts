@@ -9,6 +9,7 @@ export function inventoryNav(r: InventoryRoutes): RoleNavLink[] {
     { href: r.receive, label: "შემოსავალი", icon: "receive" },
     { href: r.issue, label: r.receive ? "გახარჯვა / ჩამოწერა" : "გახარჯვა", icon: "issue" },
     { href: r.movements, label: "მოძრაობები", icon: "movements" },
+    { href: r.receipts, label: "ზედნადებები", icon: "invoices" },
     { href: r.count, label: "ინვენტარიზაცია", icon: "count" },
     { href: r.norms, label: "ნორმები", icon: "norms" },
     { href: r.catalog, label: "კატალოგი", icon: "catalog" },

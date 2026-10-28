@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ALL_PERMISSIONS, can, DEFAULT_ROLE_PERMISSIONS, type PermissionCode } from "./permissions.ts";
 import { hasRole } from "./roles.ts";
-import { routeRedirect } from "./route-access.ts";
+import { roleSwitch, routeRedirect } from "./route-access.ts";
 
 const user = (roleCode: string) => ({ roleCode, permissions: (DEFAULT_ROLE_PERMISSIONS as Record<string, PermissionCode[]>)[roleCode] ?? [] });
 
@@ -53,6 +53,19 @@ describe("როლით წვდომა — მარშრუტები 
     assert.equal(routeRedirect("/admin", "registrar", roles), "/registrar");
     assert.equal(routeRedirect("/doctor", "warehouse", roles), "/warehouse");
     assert.equal(routeRedirect("/login", "warehouse", roles), "/warehouse");
+  });
+
+  it("სხვა საკუთარი როლის განყოფილება → ეს როლი აქტიური ხდება (უფლებებიც მისია)", () => {
+    const roles = ["admin", "accountant", "it"];
+    assert.equal(roleSwitch("/accountant/issues", "admin", roles), "accountant");
+    assert.equal(roleSwitch("/admin", "accountant", roles), "admin");
+    // იმავე როლში, საერთო განყოფილებებში, API-ში და უცხო როლზე — არ იცვლება
+    assert.equal(roleSwitch("/accountant/inventory", "accountant", roles), null);
+    assert.equal(roleSwitch("/chat", "accountant", roles), null);
+    assert.equal(roleSwitch("/issues/3", "accountant", roles), null);
+    assert.equal(roleSwitch("/api/inventory/stock", "accountant", roles), null);
+    assert.equal(roleSwitch("/doctor", "accountant", roles), null);
+    assert.equal(roleSwitch("/admin", null, roles), null);
   });
 });
 

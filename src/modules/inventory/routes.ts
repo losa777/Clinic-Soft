@@ -9,6 +9,8 @@ export type InventoryRoutes = {
   receive: string | null;
   issue: string | null;
   movements: string | null;
+  /** ზედნადებები — შესყიდვები თანხებით (inventory.reports) */
+  receipts: string | null;
   count: string | null;
   norms: string | null;
   catalog: string | null;
@@ -21,6 +23,7 @@ const full = (base: string): InventoryRoutes => ({
   receive: `${base}/receive`,
   issue: `${base}/issue`,
   movements: `${base}/movements`,
+  receipts: `${base}/receipts`,
   count: `${base}/count`,
   norms: `${base}/norms`,
   catalog: `${base}/catalog`,
@@ -33,18 +36,20 @@ const consumer = (base: string): InventoryRoutes => ({
   receive: null,
   issue: `${base}/issue`,
   movements: null,
+  receipts: null,
   count: null,
   norms: null,
   catalog: null,
 });
 
-/** ბუღალტერი/დირექტორი: ნაშთი, ღირებულება, მოძრაობები — მხოლოდ სანახავად. */
+/** ბუღალტერი/დირექტორი: ნაშთი, ღირებულება, მოძრაობები, ზედნადებები — მხოლოდ სანახავად. */
 const viewer = (base: string): InventoryRoutes => ({
   stock: base,
   items: `${base}/items`,
   receive: null,
   issue: null,
   movements: `${base}/movements`,
+  receipts: `${base}/receipts`,
   count: null,
   norms: null,
   catalog: null,

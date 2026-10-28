@@ -42,9 +42,10 @@ export type SystemEvent =
  */
 export type CallEndReason = "declined" | "missed" | "cancelled" | "ended" | "busy" | "disconnected" | "elsewhere";
 
-/** WebRTC-ის სიგნალი (სერვერი მხოლოდ გადასცემს მეორე მონაწილის ტაბს). */
+/** WebRTC-ის სიგნალი (სერვერი მხოლოდ გადასცემს მეორე მონაწილის ტაბს). restart — პასუხის გამცემი სთხოვს დამრეკს ICE restart-ს. */
 export type CallSignal =
   | { type: "offer" | "answer"; sdp: string }
+  | { type: "restart" }
   | { type: "candidate"; candidate: { candidate: string; sdpMid: string | null; sdpMLineIndex: number | null } };
 
 export type CallAck = { ok: true } | { ok: false; error: string };

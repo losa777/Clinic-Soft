@@ -48,6 +48,7 @@ function validSignal(s: unknown): s is CallSignal {
   if (!s || typeof s !== "object") return false;
   const v = s as Record<string, unknown>;
   if (v.type === "offer" || v.type === "answer") return typeof v.sdp === "string" && v.sdp.length <= SIGNAL_MAX;
+  if (v.type === "restart") return true;
   if (v.type !== "candidate" || !v.candidate || typeof v.candidate !== "object") return false;
   const c = v.candidate as Record<string, unknown>;
   return typeof c.candidate === "string" && c.candidate.length <= 1_000;

@@ -19,3 +19,13 @@ export function routeRedirect(
   if (SHARED_SECTIONS.includes(section)) return null;
   return section === roleCode || roleCodes.includes(section) ? null : `/${roleCode}`;
 }
+
+/**
+ * სხვა საკუთარი როლის განყოფილებაში გადასვლა (/<როლი>/...) — ეს როლი აქტიური ხდება (proxy.ts, გვერდის რენდერამდე,
+ * რომ layout-მაც და გვერდმაც ერთი როლის უფლებები დაინახოს). აბრუნებს ახალი როლის კოდს ან null-ს.
+ */
+export function roleSwitch(pathname: string, roleCode: string | null | undefined, roleCodes: string[] = []): string | null {
+  if (!roleCode || pathname.startsWith("/api/")) return null;
+  const section = pathname.split("/")[1];
+  return section !== roleCode && roleCodes.includes(section) ? section : null;
+}

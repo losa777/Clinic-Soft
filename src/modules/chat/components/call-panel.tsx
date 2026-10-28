@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CallState } from "@/modules/chat/client/calls";
 import { usePresence } from "@/modules/chat/client/hooks";
@@ -17,19 +17,23 @@ export function useCall<T>(selector: (s: CallState) => T): T {
   return useSyncExternalStore(calls.store.subscribe, get, get);
 }
 
-/** დარეკვის ღილაკი (საუბრის სათაური, თანამშრომლების სია). გასულზე / მიმდინარე ზარისას — გამორთულია. */
+/**
+ * დარეკვის ღილაკი (საუბრის სათაური, საუბრების და თანამშრომლების სია). აქტიურზე — მწვანე; გასულზე / მიმდინარე
+ * ზარისას — გამორთულია.
+ */
 export function CallButton({ user, className }: { user: UserRef; className?: string }) {
   const { calls } = useChatClient();
   const presence = usePresence(user.id);
   const busy = useCall((s) => s.phase !== "idle");
   const offline = presence.status === "offline";
+  const online = presence.status === "online" && !busy;
   const name = fullName(user);
   const title = offline ? `${name} სისტემაში არ არის` : busy ? "ზარი უკვე მიმდინარეობს" : `დარეკვა — ${name}`;
   return (
     <Button
       variant="ghost"
       size="icon"
-      className={className}
+      className={cn(className, online && "text-emerald-600 hover:text-emerald-700 dark:text-emerald-500 dark:hover:text-emerald-400")}
       disabled={offline || busy}
       onClick={() => void calls.call(user)}
       aria-label={title}
@@ -50,7 +54,7 @@ function Elapsed({ since }: { since: number }) {
 }
 
 const STATUS: Record<Exclude<CallState["phase"], "idle">, string> = {
-  outgoing: "რეკავს...",
+  outgoing: "ირეკება...",
   incoming: "შემომავალი ზარი",
   connecting: "კავშირი მყარდება...",
   active: "",
@@ -75,7 +79,7 @@ export function CallPanel() {
       <span className="min-w-0 flex-1 leading-tight">
         <span className="block truncate text-sm font-semibold">{fullName(call.peer)}</span>
         <span className="block text-xs text-muted-foreground">
-          {call.phase === "active" && call.startedAt ? <Elapsed since={call.startedAt} /> : STATUS[call.phase]}
+          {call.reconnecting ? "კავშირი აღდგება..." : call.phase === "active" && call.startedAt ? <Elapsed since={call.startedAt} /> : STATUS[call.phase]}
           {call.muted && " · მიკროფონი გამორთულია"}
         </span>
       </span>
@@ -90,6 +94,17 @@ export function CallPanel() {
         </>
       ) : (
         <>
+          {call.audioBlocked && (
+            <Button
+              size="icon-lg"
+              className="rounded-full bg-amber-500 text-white hover:bg-amber-600"
+              onClick={() => calls.resumeAudio()}
+              aria-label="ხმის ჩართვა — ბრაუზერმა ხმა დაბლოკა"
+              title="ხმის ჩართვა"
+            >
+              <Volume2 />
+            </Button>
+          )}
           {call.phase !== "outgoing" && (
             <Button
               size="icon-lg"

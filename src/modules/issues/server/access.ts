@@ -11,15 +11,14 @@ import type { IssueActor } from "@/modules/issues/rules";
  */
 export type IssueUser = {
   id: number;
-  /** ყველა როლის id (მთავარი + დამატებითი) — კატეგორიის მიმღებ როლთან შესადარებლად */
+  /** აქტიური როლის id — კატეგორიის მიმღებ როლთან შესადარებლად (სხვა როლის ბილეთები იმ როლზე გადასვლისას ჩანს) */
   roleIds: number[];
   isManager: boolean;
   viewsAll: boolean;
 };
 
 export async function issueUser(user: Session["user"]): Promise<IssueUser> {
-  const codes = user.roles?.length ? user.roles.map((r) => r.code) : [user.roleCode];
-  const roles = await prisma.role.findMany({ where: { code: { in: codes } }, select: { id: true } });
+  const roles = await prisma.role.findMany({ where: { code: user.roleCode }, select: { id: true } });
   return {
     id: Number(user.id),
     roleIds: roles.map((r) => r.id),

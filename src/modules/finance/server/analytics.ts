@@ -33,6 +33,12 @@ export type Totals = {
   materials: string | null;
   supplies: string | null;
   writeoffs: string | null;
+  /** შესყიდვები: ზედნადებებით მიღებული საქონელი (რაოდენობა × ფასი) მიღების თარიღით — ჯერ ხარჯი არ არის, ნაშთში შედის */
+  purchases: string | null;
+  /** ზედნადებების რაოდენობა პერიოდში */
+  receipts: number;
+  /** ფასის გარეშე მიღებული ხაზები (ჯამში 0-ით ითვლება) */
+  unpricedLines: number;
 };
 
 export type TrendPoint = { key: string; billed: string; collected: string };
@@ -64,7 +70,7 @@ const avg = (total: Tetri, n: number) => fromTetri(n ? Math.round(total / n) : 0
 
 async function loadTotals(from: string, to: string, withInventory: boolean): Promise<Totals> {
   const r = periodRange(from, to);
-  const [[inv], payments, [inventory]] = await Promise.all([
+  const [[inv], payments, [inventory], [purchases]] = await Promise.all([
     prisma.$queryRaw<{ n: bigint; patients: bigint; total: unknown; discount: unknown; insurance: unknown; patient: unknown }[]>`
       SELECT COUNT(*) AS n, COUNT(DISTINCT i.patient_id) AS patients, SUM(i.total_amount) AS total,
              SUM(i.discount_amount) AS discount, SUM(i.insurance_amount) AS insurance, SUM(i.patient_amount) AS patient
@@ -84,6 +90,15 @@ async function loadTotals(from: string, to: string, withInventory: boolean): Pro
                  SUM(CASE WHEN m.type = 'writeoff' THEN -m.quantity * COALESCE(b.unit_cost, 0) END) AS writeoffs
           FROM inventory_movements m JOIN inventory_batches b ON b.id = m.batch_id JOIN inventory_items it ON it.id = m.item_id
           WHERE m.created_at >= ${r.from} AND m.created_at < ${r.to} AND m.type IN ('consumption', 'writeoff')
+        `
+      : Promise.resolve([null]),
+    // received_on — DATE (თბილისის დღე), ამიტომ პერიოდი პირდაპირ თარიღებით
+    withInventory
+      ? prisma.$queryRaw<{ total: unknown; receipts: bigint; unpriced: unknown }[]>`
+          SELECT SUM(b.received_quantity * COALESCE(b.unit_cost, 0)) AS total, COUNT(DISTINCT r.id) AS receipts,
+                 SUM(b.unit_cost IS NULL) AS unpriced
+          FROM inventory_receipts r JOIN inventory_batches b ON b.receipt_id = r.id
+          WHERE r.received_on >= ${from} AND r.received_on <= ${to}
         `
       : Promise.resolve([null]),
   ]);
@@ -107,6 +122,9 @@ async function loadTotals(from: string, to: string, withInventory: boolean): Pro
     materials: inventory ? cost(inventory.materials) : null,
     supplies: inventory ? cost(inventory.supplies) : null,
     writeoffs: inventory ? cost(inventory.writeoffs) : null,
+    purchases: purchases ? cost(purchases.total) : null,
+    receipts: int(purchases?.receipts),
+    unpricedLines: int(purchases?.unpriced),
   };
 }
 

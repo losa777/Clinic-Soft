@@ -1,20 +1,42 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Check, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { type RoleRef, rolePath } from "@/lib/roles";
 
 /**
+ * მიმდინარე როლი მისამართიდან (/<კოდი>/...). ზედა პანელი საერთო layout-შია და გადასვლისას თავიდან არ იხატება,
+ * ამიტომ სესიის როლი (active) შეიძლება ძველი იყოს; საერთო განყოფილებებში (/chat, /account, /issues) — ბოლოს გახსნილი როლი.
+ */
+function useCurrentRole(roles: RoleRef[], active: RoleRef): RoleRef {
+  const section = usePathname().split("/")[1];
+  const [last, setLast] = useState(active);
+  const here = roles.find((r) => r.code === section);
+  // წინა რენდერიდან დამახსოვრებული მნიშვნელობა (React: „state-ის შენახვა წინა რენდერებიდან“)
+  if (here && here.code !== last.code) setLast(here);
+  return here ?? last;
+}
+
+/** ლოგო → მიმდინარე როლის მთავარი გვერდი. */
+export function HomeLink({ roles, active, children }: { roles: RoleRef[]; active: RoleRef; children: React.ReactNode }) {
+  const current = useCurrentRole(roles, active);
+  return (
+    <Link href={rolePath(current.code)} className="shrink-0">
+      {children}
+    </Link>
+  );
+}
+
+/**
  * ზედა პანელის როლი. რამდენიმე როლის მომხმარებელს — გადამრთველი: როლის არჩევა მის გვერდზე გადაყავს
- * (არჩეული როლი ინახება — src/lib/dal.ts requireRole). მიმდინარე როლი მისამართიდან ჩანს (/<კოდი>/...).
+ * (როლი აქტიური ხდება გადასვლისას — src/proxy.ts).
  */
 export function RoleSwitcher({ roles, active }: { roles: RoleRef[]; active: RoleRef }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const section = pathname.split("/")[1];
-  const current = roles.find((r) => r.code === section) ?? active;
-
+  const current = useCurrentRole(roles, active);
   if (roles.length < 2) return <p className="truncate text-xs text-muted-foreground">{current.name}</p>;
 
   return (
