@@ -1309,6 +1309,20 @@ async function createBankTables() {
   await ensureConstraint("payments", "fk_payments_bank", "FOREIGN KEY (bank_id) REFERENCES banks (id)");
 }
 
+/** მომხმარებლის პირადი პარამეტრები (src/lib/preferences.ts) — მაგ. ბარათების რიგი. */
+async function createPreferenceTables() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id    INT         NOT NULL,
+      pref_key   VARCHAR(50) NOT NULL,
+      value      TEXT        NOT NULL,
+      updated_at DATETIME    NOT NULL,
+      PRIMARY KEY (user_id, pref_key),
+      CONSTRAINT fk_user_preferences_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ${TABLE_OPTIONS}
+  `);
+}
+
 /** სატესტო ბანკები — მხოლოდ ცარიელ ცხრილში (ადმინის ცვლილებები რჩება). */
 async function seedBanks() {
   if (await prisma.bank.count()) return;
@@ -1634,6 +1648,7 @@ async function main() {
   await createIssueTables();
   await createReportingTables();
   await createBankTables();
+  await createPreferenceTables();
   console.log("✔ ცხრილები მზადაა");
 
   if (hasLegacyVisits) await migrateLegacyVisits();

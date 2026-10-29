@@ -131,6 +131,7 @@ model User {
   encountersPortalUploaded Encounter[] @relation("EncounterPortalUploadedBy")
   reportTemplates          ReportTemplate[]
   reportPreference         ReportPreference?
+  preferences              UserPreference[]
 
   issuesCreated    Issue[]           @relation("IssueCreatedBy")
   issuesAssigned   Issue[]           @relation("IssueAssignee")
@@ -1581,4 +1582,16 @@ model ReportPreference {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("report_preferences")
+}
+
+/// მომხმარებლის პირადი პარამეტრები (გასაღები → მნიშვნელობა, JSON/ტექსტი), მაგ. „პირველადი პაციენტების“ ბარათების რიგი.
+model UserPreference {
+  userId    Int      @map("user_id")
+  key       String   @map("pref_key") @db.VarChar(50)
+  value     String   @db.Text
+  updatedAt DateTime @map("updated_at") @db.DateTime(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+  @@map("user_preferences")
 }

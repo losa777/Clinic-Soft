@@ -1,6 +1,7 @@
 "use server";
 
 import { Prisma } from "@/generated/prisma/client";
+import { z } from "zod";
 import { type ActionFailure, type ActionResult, failure, invalid, isUniqueViolation, success } from "@/lib/action-result";
 import { loadDaySlots, loadPatientUpcoming } from "@/lib/appointment-records";
 import {
@@ -26,6 +27,7 @@ import {
 import { addDays, formatDate, formatTime, isRealDate, tbilisiParts, tbilisiToday } from "@/lib/appointment-slots";
 import type { FirstVisitStats } from "@/lib/first-visit-balance";
 import { isFirstVisitPatient, loadFirstVisitStats } from "@/lib/first-visits";
+import { PREFERENCE_KEYS, saveIdOrder } from "@/lib/preferences";
 import { requireAnyPermission, requirePermission } from "@/lib/dal";
 import { notifyArrival } from "@/lib/notifications";
 import { prisma } from "@/lib/db";
@@ -317,4 +319,13 @@ export async function firstVisitBalance(date: string, patientId: number | null):
     patientId && Number.isSafeInteger(patientId) && patientId > 0 ? isFirstVisitPatient(patientId, date) : Promise.resolve(null),
   ]);
   return { stats, patientIsNew };
+}
+
+/** „პირველადი პაციენტების“ ბარათების რიგი (drag & drop) — მომხმარებლის პირადი, შემდეგ შესვლაზეც რჩება. */
+export async function saveFirstVisitsOrderAction(specialtyIds: number[]): Promise<ActionResult> {
+  const me = await requirePermission("appointments.book");
+  const parsed = z.array(z.number().int().positive()).max(200).safeParse(specialtyIds);
+  if (!parsed.success) return failure("რიგი არასწორია");
+  await saveIdOrder(Number(me.id), PREFERENCE_KEYS.firstVisitsOrder, [...new Set(parsed.data)]);
+  return success("რიგი შენახულია");
 }

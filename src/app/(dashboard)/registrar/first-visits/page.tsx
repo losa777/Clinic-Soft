@@ -8,6 +8,6 @@ export const metadata: Metadata = { title: "პირველადი პა�
 
 export default async function RegistrarFirstVisitsPage({ searchParams }: PageProps<"/registrar/first-visits">) {
   await requireRole("registrar");
-  await requirePermission("appointments.book");
-  return <FirstVisitsScreen path="/registrar/first-visits" rawDate={(await searchParams).date} />;
+  const user = await requirePermission("appointments.book");
+  return <FirstVisitsScreen path="/registrar/first-visits" rawDate={(await searchParams).date} userId={Number(user.id)} />;
 }
